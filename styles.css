@@ -3,8 +3,8 @@
 /* ===================================================== */
 .rv-container {
   --rv-bg: var(--background-primary); 
-  --rv-line: var(--text-muted, #888888); 
-  --rv-line-width: 0.05em; 
+  --rv-line: var(--text-faint, #888888); 
+  --rv-line-width: 0.04em; 
   
   --rv-upper-max: 22vh;
   --rv-left-max: 35vh;
@@ -230,8 +230,8 @@
   }
   .rv-columns-wrapper {
     display: block;
-    columns: clamp(6em, 20cqw, 12em);
-    gap: 0 0.3em;
+    columns: clamp(5em, 20cqw, 12em);
+    gap: 0 clamp(0.05em, 2cqw, 0.3em);  /* gap: <row dist> <column dist>; */
     width: 100%;
     height: fit-content;
     overflow-x: hidden;
@@ -527,12 +527,8 @@
   }
 }
 
-
 /* =================================================================== */
 /* 12. INFO BUTTON & INTERACTIVE HIDDEN SNAPSHOT LAYOUT */
-/* =================================================================== */
-/* 12. INFO BUTTON & INTERACTIVE HIDDEN SNAPSHOT LAYOUT */
-/* =================================================================== */
 .rv-container {
   .rv-info-btn {
     position: absolute;
@@ -722,4 +718,33 @@
     font-size: calc(var(--rv-font-size)* 1.2);
     line-height: 1.5;
   }
+}
+
+
+/* Sørg for at den obsidian-kompatible linken oppfører seg stabilt i myBrain-noden */
+.rv-linkdiv a.internal-link.data-link-text {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    text-decoration: none;
+    white-space: nowrap;
+    /* La linker arve eller bruke stiler uten at det brekker myBrain-boksen */
+}
+
+/* Hvis eldre Supercharged Links dytter inn ikoner via pseudo-elementer */
+.rv-linkdiv a.internal-link.data-link-text::before,
+.rv-linkdiv a.internal-link.data-link-text::after {
+    display: inline-block;
+    flex-shrink: 0;
+    vertical-align: middle;
+}
+
+/* SCL JIT Interop: Lar inline tekstfarge og fontstil slippe igjennom på myBrain-noder */
+.rv-container .focusable-note-link[style*="color"] {
+    color: inherit !important;
+}
+.rv-container .focusable-note-link[style*="font"] {
+    font-weight: inherit !important;
+    font-style: inherit !important;
 }

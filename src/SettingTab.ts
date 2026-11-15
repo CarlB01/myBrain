@@ -1,7 +1,7 @@
 import { App, debounce, PluginSettingTab, SettingDefinitionItem } from "obsidian";
 import { RV } from "./constants.js"
 import MyBrainPlugin from "./main.js";
-import { MyBrainView } from "./view.js";
+import { MyBrainView } from "./view/view.js";
 import { StringUtils } from "./StringUtils.js";
 
 export class SettingTab extends PluginSettingTab {

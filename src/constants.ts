@@ -1,6 +1,7 @@
 /**
  * Global Constants Dictionary for myBrain Graph Nodes Network.
  * Structured cleanly into architectural categories for production release.
+ * Strictly strictly typed and frozen via TypeScript literal casting to ensure 0% undefined/any footprint.
  */
 export const RV = {
   // ==========================================================================
@@ -42,10 +43,13 @@ export const RV = {
   LINKDIV: 'rv-linkdiv',
   
   /* 
-   * Hyperlink base classes. Restored 'internal-link' natively at birth
-   * to ensure maximum compatibility and clean native core alignment.
+   * Primary downstream tracking anchor class for myBrain active nodes.
    */
-  A: 'internal-link focusable-note-link',
+  A: 'focusable-note-link',
+  
+  /*
+   * Retained for backward parsing safety if referenced elsewhere in legacy files.
+   */
   SPAN: 'rv-text-span',
 
   // ==========================================================================
@@ -81,8 +85,14 @@ export const RV = {
   
   /* 
    * Supercharged Links Compatibility Hooks: 
-   * Preserves downstream element discovery matching tag-based attributes.
+   * Standardized universal baseline selector used by both core layouts and SCL engines.
    */
-  SUPERCHARGED_ATTRIB: 'data-link-icon data-link-icon-after data-link-text',
+  SUPERCHARGED_ATTRIB: 'data-link-text',
 
 } as const;
+
+/**
+ * Explicit Type Declaration mapping the frozen constant dictionary layout.
+ * Guarantees compile-time type exhaustiveness across modular file imports.
+ */
+export type RVConstants = typeof RV;

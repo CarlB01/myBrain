@@ -1,6 +1,6 @@
-import { Plugin, Notice, WorkspaceLeaf, TFile, TAbstractFile, debounce } from 'obsidian';
+import { Plugin, Notice, WorkspaceLeaf, TFile, TAbstractFile, debounce, Debouncer } from 'obsidian';
 import { SettingTab } from "./SettingTab.js";
-import { MyBrainView } from './view.js';
+import { MyBrainView } from './view/view.js';
 import { RV } from './constants.js';
 import { NetworkGraph } from './NetworkGraph.js';
 import { SettingsManager } from './SettingsManager.js';
@@ -9,74 +9,60 @@ export default class MyBrainPlugin extends Plugin {
   declare settings: SettingsManager;
   public networkGraph!: NetworkGraph;
 
-  private appPaused = false;
-  private resumedAt = 0;
-  private mobileWarmupUntil = 0;
+  private appPaused: boolean = false;
+  private resumedAt: number = 0;
+  private mobileWarmupUntil: number = 0;
 
   public isAppPaused(): boolean {
     return this.appPaused;
   }
 
-  public isInResumeCooldown(ms = 1200): boolean {
+  public isInResumeCooldown(ms: number = 1200): boolean {
     return Date.now() - this.resumedAt < ms;
   }
 
-  public markResumedNow() {
+  public markResumedNow(): void {
     this.resumedAt = Date.now();
-    this.mobileWarmupUntil = this.resumedAt + 2000; // 1.5s warmup gate after resume
+    this.mobileWarmupUntil = this.resumedAt + 2000; 
   }
 
   public isInMobileWarmup(): boolean {
     return Date.now() < this.mobileWarmupUntil;
   }
 
-  /**
-   * APPLIED LISTENERS: 
-   * - registerGlobalEvents  ('file-open',  'rename', 'resolve')
-   * - registerAppLifecycleEvents (const suspendAllViews, const resumeAllViews, 'visibilitychange'
-   */
-  async onload() {
+  async onload(): Promise<void> {
     await this.loadSettings();
     this.networkGraph = new NetworkGraph(this, this.settings);
 
     this.addSettingTab(new SettingTab(this.app, this));
   
-    // Registers the plugin view architecture allowing it to open as a sidebar or main tab
     this.registerView(
       RV.VIEW_TYPE,
-      (leaf) => new MyBrainView(leaf, this)
+      (leaf: WorkspaceLeaf) => new MyBrainView(leaf, this)
     );
 
-    // Binds all global application listeners natively (file-open, rename, resolve)
     this.registerGlobalEvents();
     this.registerAppLifecycleEvents();
 
-    // Ribbon icon to trigger view activation
     this.addRibbonIcon(RV.ICON, "Open myBrain", () => {
       void this.activateGraphView();
     });
 
-    // Native command palette registration
     this.addCommand({
       id: 'open-view',
       name: 'Open view',
-      callback: () => this.activateGraphView(),
+      callback: () => { void this.activateGraphView(); },
     });
   }
 
-  /**
-   * Binds global application lifecycle events to synchronize memory caches with vault mutations.
-   * Leverages the centralized, debounced NetworkGraph architecture to avoid complex view-state pooling.
-   */
-  private registerGlobalEvents() {
+  private registerGlobalEvents(): void {
     // A. FILE OPEN INTERCEPTOR
     this.registerEvent(
       this.app.workspace.on('file-open', (file: TFile | null) => {
         if (this.appPaused || !file) return;
 
-        this.app.workspace.getLeavesOfType(RV.VIEW_TYPE).forEach(leaf => {
+        this.app.workspace.getLeavesOfType(RV.VIEW_TYPE).forEach((leaf: WorkspaceLeaf) => {
           if (leaf.view instanceof MyBrainView) {
-            // Direct synchronous trigger: networkGraph handles its own internal timing.
             leaf.view.onFileChange(file);
           }
         });
@@ -88,98 +74,93 @@ export default class MyBrainPlugin extends Plugin {
       this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
         if (this.appPaused || !(file instanceof TFile)) return;
 
-        // 1. Immediate data layer cache purge to clear stale path strings
-        if (this.networkGraph?.noteCache) {
+        if (this.networkGraph && this.networkGraph.noteCache) {
           this.networkGraph.noteCache.delete(oldPath);
           this.networkGraph.noteCache.delete(file.path);
         }
 
-        // 2. Execute background database memory path mapping updates.
         this.networkGraph.handleFileRename(file, oldPath);
 
-        // 3. Update view tracking states and request a background graph recalculation
-        const leaves = this.app.workspace.getLeavesOfType(RV.VIEW_TYPE);
-        for (const leaf of leaves) {
+        this.app.workspace.getLeavesOfType(RV.VIEW_TYPE).forEach((leaf: WorkspaceLeaf) => {
           if (leaf.view instanceof MyBrainView) {
-            const myView = leaf.view;
-            if (!myView.isFullyStarted) continue;
+            const myView: MyBrainView = leaf.view;
+            if (!myView.isFullyStarted) return;
 
-            const wasCurrentlyVisibleFileRenamed = oldPath === myView.currentFilePath;
-            if (wasCurrentlyVisibleFileRenamed) {
+            if (oldPath === myView.currentFilePath) {
               myView.currentFilePath = file.path;
               this.networkGraph.update(file);
             }
           }
-        }
+        });
       })
     );
 
     // C. METADATA RESOLVE INTERCEPTOR
-    const debouncedGraphUpdate = debounce(() => {
-      const activeNow = this.app.workspace.getActiveFile();
+    const debouncedGraphUpdate: Debouncer<[], void> = debounce(() => {
+      const activeNow: TFile | null = this.app.workspace.getActiveFile();
       if (activeNow) {
         this.networkGraph.update(activeNow);
       }
     }, 250, true);
 
-    this.app.metadataCache.on('resolve', (file: TFile) => {
-      if (this.appPaused || this.isInResumeCooldown(1200) || this.isInMobileWarmup()) return;
+    this.registerEvent(
+      this.app.metadataCache.on('resolve', (file: TFile) => {
+        if (this.appPaused || this.isInResumeCooldown(1200) || this.isInMobileWarmup()) return;
 
-      // 1. handleFileResolve sjekker relevans og sletter cachen for akkurat den endrede filen
-      void this.networkGraph.handleFileResolve(file).then((påvirkerVisning) => {
-        if (!påvirkerVisning) return; // Hvis filen ikke har noe med grafen å gjøre, stopper vi her!
+        void this.networkGraph.handleFileResolve(file).then((påvirkerVisning: boolean) => {
+          if (!påvirkerVisning) return; 
 
-        this.app.workspace.getLeavesOfType(RV.VIEW_TYPE).forEach((leaf) => {
-          if (leaf.view instanceof MyBrainView) {
-            const myView = leaf.view;
-            if (!myView.isFullyStarted) return;
-            
-            // 2. Fyr av en ENKELT, kontrollert oppdatering av grafen via debouncen!
-            debouncedGraphUpdate();
-          }
+          this.app.workspace.getLeavesOfType(RV.VIEW_TYPE).forEach((leaf: WorkspaceLeaf) => {
+            if (leaf.view instanceof MyBrainView) {
+              if (!leaf.view.isFullyStarted) return;
+              debouncedGraphUpdate();
+            }
+          });
         });
-      });
-    });
+      })
+    );
     
-    // D. REGISTER THE REACTIVE CONTROLTOWER EVENT
-    const debouncedRefresh = debounce(() => {
-      const activeFile = this.app.workspace.getActiveFile();
+    // D. REGISTER THE REACTIVE CONTROLTOWER EVENT + JIT COLOR UPDATE FOR SCL v1.0.0
+    const debouncedRefresh: Debouncer<[], void> = debounce(() => {
+      const activeFile: TFile | null = this.app.workspace.getActiveFile();
       if (activeFile) {
         void this.networkGraph.update(activeFile);
       }
-    }, 250, true); // Venter 250ms etter SISTERE fil-indeksering før den oppdaterer
+    }, 250, true);
     
     this.registerEvent(
       this.app.metadataCache.on('changed', (file: TFile) => {
-        // Sjekk lynraskt mot grafens O(1)-cacher om denne filen betyr noe for oss
         if (this.networkGraph.isFileRelevantToCurrentGraph(file)) {
+          // JIT SCL v1.0.0 Trigger: Hvis filen endres i bakgrunnen av SCL, ber vi bare AreaManager 
+          // oppdatere eksisterende linjefarger umiddelbart i stedet for full render, for maksimal ytelse.
+          this.app.workspace.getLeavesOfType(RV.VIEW_TYPE).forEach((leaf: WorkspaceLeaf) => {
+            if (leaf.view instanceof MyBrainView && leaf.view.areaManager) {
+              leaf.view.areaManager.requestRedraw();
+            }
+          });
           debouncedRefresh();
         }
       })
     );
   }
 
-  /**
-   * Encapsulates application hardware suspend and visibility state transitions.
-   */  
-  private registerAppLifecycleEvents() {
-    const suspendAllViews = () => {
+  private registerAppLifecycleEvents(): void {
+    const suspendAllViews = (): void => {
       this.appPaused = true;
-      this.app.workspace.getLeavesOfType(RV.VIEW_TYPE).forEach(leaf => {
+      this.app.workspace.getLeavesOfType(RV.VIEW_TYPE).forEach((leaf: WorkspaceLeaf) => {
         if (leaf.view instanceof MyBrainView) {
           leaf.view.suspendForBackground();
         }
       });
     };
 
-    const resumeAllViews = () => {
-      // 1. Sjekk om det er mindre enn 300ms siden forrige resume ved å bruke tidsstempel
+    const resumeAllViews = (): void => {
       if (Date.now() - this.resumedAt < 300) return;
       
       this.appPaused = false;
-      this.markResumedNow(); // Dette oppdaterer this.resumedAt til Date.now() med en gang!
+      this.markResumedNow();
 
-      this.app.workspace.getLeavesOfType(RV.VIEW_TYPE).forEach(leaf => {
+      this.app.workspace.getLeavesOfType(RV.VIEW_TYPE).forEach((leaf: WorkspaceLeaf) => {
         if (leaf.view instanceof MyBrainView) {
           leaf.view.resumeFromBackground();
         }
@@ -190,25 +171,18 @@ export default class MyBrainPlugin extends Plugin {
       if (document.hidden) suspendAllViews();
       else resumeAllViews();
     });
-
   }
 
-  /**
-   * Activates the custom panel inside the primary viewport framework.
-   * View lifecycle hooks will handle internal data ignition gracefully [dan].
-   */
-  async activateGraphView() {
+  async activateGraphView(): Promise<void> {
     const { workspace } = this.app;
     
-    // 1. DUPLICATE SAFEGUARD: Avoids redundant tabs
-    let leaf = workspace.getLeavesOfType(RV.VIEW_TYPE)[0];
+    const leaf: WorkspaceLeaf | undefined = workspace.getLeavesOfType(RV.VIEW_TYPE)[0];
     if (leaf) {
       void workspace.revealLeaf(leaf);
       return;
     }
 
-    // 2. MOUNT NEW PANEL: Instantiates a fresh leaf container inside the left sidebar split
-    let newLeaf: WorkspaceLeaf | null | undefined = workspace.getLeftLeaf(false);
+    const newLeaf: WorkspaceLeaf | null = workspace.getLeftLeaf(false);
 
     if (newLeaf) {
       await newLeaf.setViewState({
@@ -216,52 +190,41 @@ export default class MyBrainPlugin extends Plugin {
         active: true, 
       });
       
-      // Symmetrical void-guard prefix deployed on the newly generated leaf element [dan]
       void workspace.revealLeaf(newLeaf);
-      workspace.leftSplit?.expand(); // Vertically expands the sidebar partition width
+      if (workspace.leftSplit) workspace.leftSplit.expand();
 
-      // Send files directly to the view. If cache is not ready, the view's own debouncedResolve handles it!
-      const activeFile = this.app.workspace.getActiveFile();
-      if (activeFile) {
-        if (newLeaf.view instanceof MyBrainView) {
-          void newLeaf.view.onFileChange(activeFile);
-        }
+      const activeFile: TFile | null = this.app.workspace.getActiveFile();
+      if (activeFile && newLeaf.view instanceof MyBrainView) {
+        newLeaf.view.onFileChange(activeFile);
       }
     } else {
       new Notice("Could not create view leaf");
     }
   }
   
-  onunload() {
+  onunload(): void {
     this.appPaused = true;
-    this.app.workspace.getLeavesOfType(RV.VIEW_TYPE).forEach(leaf => {
+    this.app.workspace.getLeavesOfType(RV.VIEW_TYPE).forEach((leaf: WorkspaceLeaf) => {
       if (leaf.view instanceof MyBrainView) {
         leaf.view.suspendForBackground();
       }
     });
-    this.networkGraph.cancel(); 
+    if (this.networkGraph) this.networkGraph.cancel(); 
   }
 
-  /**
-   * Initializes settings manager defaults and hydrates instances with disk state records.
-   */
-  async loadSettings() {
+  async loadSettings(): Promise<void> {
     this.settings = new SettingsManager();
+    const loadedData: unknown = await this.loadData();
     
-    // ===== FIX #3: Type the loaded data safely =====
-    // Cast the loaded data as a partial SettingsManager to ensure type safety
-    const loadedData = await this.loadData() as Partial<SettingsManager> | null;
-    
-    if (loadedData) {
+    if (loadedData && typeof loadedData === "object") {
       Object.assign(this.settings, loadedData);
     }
     
     this.settings.prepare();
   }
   
-  async saveSettings() {
+  async saveSettings(): Promise<void> {
     this.settings.prepareForSave();
     await this.saveData(this.settings);
   }
-
 }
