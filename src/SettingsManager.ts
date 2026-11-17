@@ -1,4 +1,4 @@
-import { StringUtils } from "./StringUtils";
+import { StringUtils } from "./utils/StringUtils";
 
 /**
  * Configuration and Settings State Manager for myBrain Graph Notes Network.

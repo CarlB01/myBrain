@@ -1,7 +1,7 @@
 import { FrontMatterCache } from "obsidian";
-import { SettingsManager } from "./SettingsManager";
+import { SettingsManager } from "../SettingsManager";
 import { Node } from "./Node";
-import { StringUtils } from "./StringUtils";
+import { StringUtils } from "../utils/StringUtils";
 import { Anchor } from "./Anchor";
 
 export type Relation = "center" | "parent" | "child" | "friend"| "sibling" | "undefined" | "undefined-sibling" | "ignored";

@@ -1,6 +1,6 @@
 import { Point } from "obsidian";
 import { Node } from "./Node";
-import { RV } from "./constants";
+import { RV } from "../utils/constants";
 
 export type Direction = "up" | "down" | "left" | "right";
 

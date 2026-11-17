@@ -1,9 +1,9 @@
 import { Plugin, Notice, WorkspaceLeaf, TFile, TAbstractFile, debounce, Debouncer } from 'obsidian';
 import { SettingTab } from "./SettingTab.js";
 import { MyBrainView } from './view/view.js';
-import { RV } from './constants.js';
-import { NetworkGraph } from './NetworkGraph.js';
+import { RV } from './utils/constants.js';
 import { SettingsManager } from './SettingsManager.js';
+import { NetworkGraph } from './data/NetworkGraph.js';
 
 export default class MyBrainPlugin extends Plugin {
   declare settings: SettingsManager;
@@ -139,6 +139,18 @@ export default class MyBrainPlugin extends Plugin {
             }
           });
           debouncedRefresh();
+        }
+      })
+    );
+
+    // E. LISTEN FOR LIVE RULE/COLOR UPDATES FROM RE-SUPERCHARGED LINKS
+    this.registerEvent(
+      this.app.workspace.on("resupercharged-links:rules-changed" as "quit", () => {
+        if (this.appPaused) return;
+
+        const activeFile: TFile | null = this.app.workspace.getActiveFile();
+        if (activeFile) {
+          void this.networkGraph.update(activeFile);
         }
       })
     );

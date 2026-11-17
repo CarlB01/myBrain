@@ -1,6 +1,6 @@
 import { MyBrainView } from './view.js';
 import { Platform, HoverParent } from 'obsidian';
-import { RV } from '../constants.js';
+import { RV } from '../utils/constants.js';
 
 export class ViewLinkHandler {
   private view: MyBrainView;
@@ -15,13 +15,13 @@ export class ViewLinkHandler {
    * Hooks pointer events directly into core container document streams.
    */
   public registerEvents(contentEl: HTMLElement, hoverParent: HoverParent): void {
-    contentEl.on('click', ".focusable-note-link", (event: MouseEvent, target: HTMLElement) => {
+    contentEl.on('click', `.${RV.A}`, (event: MouseEvent, target: HTMLElement) => {
       event.preventDefault();
-      const path: string | null = target.getAttribute("data-link-path");
+      const path: string | null = target.getAttribute("data-href");
       if (path !== null) void this.view.handleLinkClick(path);
     });
 
-    contentEl.on('mouseover', ".focusable-note-link", (event: MouseEvent, target: HTMLElement) => {
+    contentEl.on('mouseover', `.${RV.A}`, (event: MouseEvent, target: HTMLElement) => {
       this.lastMouseEvent = event;
       this.lastMouseTarget = target;
 
@@ -35,13 +35,13 @@ export class ViewLinkHandler {
         parentItem.classList.add('is-pressed-origin');
       }
 
-      if (event.metaKey && !target.classList.contains('is-hovered')) {
+      if ((event.metaKey || event.ctrlKey) && !target.classList.contains('is-hovered')) {
         this.triggerCorePreview(event, target, hoverParent);
         target.classList.add('is-hovered');
       }
     });
 
-    contentEl.on('mouseleave', ".focusable-note-link", (_event: MouseEvent, target: HTMLElement) => {
+    contentEl.on('mouseleave', `.${RV.A}`, (_event: MouseEvent, target: HTMLElement) => {
       target.classList.remove('is-hovered');
       this.lastMouseEvent = null;
       this.lastMouseTarget = null;
@@ -60,7 +60,7 @@ export class ViewLinkHandler {
 
     this.view.registerDomEvent(window, 'keyup', (event: KeyboardEvent) => {
       if (event.key === "Meta" || event.key === "Control") {
-        const elements: NodeListOf<HTMLElement> = contentEl.querySelectorAll(".focusable-note-link.is-hovered");
+        const elements: NodeListOf<HTMLElement> = contentEl.querySelectorAll(`${RV.A}.is-hovered`);
         elements.forEach((el: HTMLElement) => el.classList.remove("is-hovered"));
       }
     });
@@ -72,19 +72,17 @@ export class ViewLinkHandler {
   }
 
   private triggerCorePreview(event: MouseEvent, targetBox: HTMLElement, hoverParent: HoverParent): void {
-    const linktext: string | null = targetBox.getAttribute("data-link-path") || targetBox.getAttribute("data-href");
-    const sourcePath: string | null = targetBox.getAttribute("data-link-path");
+    const linktext: string | null = targetBox.getAttribute("data-href");
+    if (linktext === null) return;
 
-    if (linktext !== null) {
-      this.view.app.workspace.trigger('hover-link', {
-        event,
-        source: RV.VIEW_TYPE,
-        targetEl: targetBox,
-        linktext,
-        sourcePath: sourcePath || linktext,
-        hoverParent
-      });
-    }
+    this.view.app.workspace.trigger('hover-link', {
+      event,
+      source: RV.VIEW_TYPE,
+      targetEl: targetBox,
+      linktext,
+      sourcePath: this.view.currentFilePath || linktext,
+      hoverParent
+    });
   }
 
   private buildSyntheticEvent(): MouseEvent {

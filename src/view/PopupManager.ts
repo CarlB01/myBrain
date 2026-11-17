@@ -1,6 +1,6 @@
-import { NetworkGraph } from "../NetworkGraph.js";
+import { NetworkGraph } from "../data/NetworkGraph.js";
 import MyBrainPlugin from "../main.js";
-import { RV } from "../constants.js";
+import { RV } from "../utils/constants.js";
 import { Platform } from "obsidian";
 
 export class PopupManager {
@@ -68,8 +68,8 @@ export class PopupManager {
 
       nodes.forEach(node => {
         const itemWrapper = linksContainer.createDiv({ cls: "rv-ignored-pure-item" });
-        const linkEl = itemWrapper.createEl("a", { cls: "focusable-note-link supercharged rv-ignored-note-link" });
-        linkEl.setAttribute("data-link-path", node.path);
+        const linkEl = itemWrapper.createEl("a", { cls: `internal-link ${RV.A} rv-ignored-note-link` });
+        linkEl.setAttribute("data-href", node.path);
         linkEl.createSpan({ text: node.displayText, cls: "rv-text-span" });
 
         this.plugin.registerDomEvent(linkEl, "click", (e: MouseEvent) => {

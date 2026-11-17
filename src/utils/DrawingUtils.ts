@@ -1,5 +1,5 @@
 import { Point } from "obsidian";
-import { Gate } from "./Gate";
+import { Gate } from "../data/Gate";
 
 /**
  * High-performance vector rendering utility for SVG path generations.

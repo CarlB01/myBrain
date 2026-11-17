@@ -1,11 +1,14 @@
 import { TFile, CachedMetadata, parseFrontMatterAliases, parseFrontMatterTags } from "obsidian";
-import { RV } from "./constants.js";
-import { StringUtils } from "./StringUtils.js";
+import { RV } from "../utils/constants.js";
+import { StringUtils } from "../utils/StringUtils.js";
 import { Anchor } from "./Anchor.js";
-import { Gate } from "./Gate.js";
 import { Relation } from "./RelationClassifier.js";
+import { Gate } from "./Gate.js";
+
+const EMPTY_FROZEN_CLASSES: readonly string[] = Object.freeze([]);
 
 export class Node {  
+  public readonly file: TFile; // Lagre TFile-referansen for O(1) batch-innsending
   public path: string; // updates if user renames a node 
   public basename: string;
   public normalizedBasename: string;
@@ -49,7 +52,18 @@ export class Node {
     ignored: new Set<Node>()
   };
 
+  // Monomorfe Flyweight-felter (initialiseres med faste typer i constructor for V8)
+  public sclHasMatch: boolean = false;
+  public sclSignature: string = "";
+  public sclColor: string = "";
+  public sclBgColor: string = "";
+  public sclIconBefore: string = "";
+  public sclIconAfter: string = "";
+  public sclClasses: readonly string[] = EMPTY_FROZEN_CLASSES;
+
+
   constructor(
+    file:TFile,
     path: string, 
     basename: string, 
     displayText: string, 
@@ -58,8 +72,8 @@ export class Node {
     isInitiallyIgnored: boolean,
     frontmatter: import("obsidian").FrontMatterCache | null,
     normalizedBasename: string
-
   ) {
+    this.file = file;
     this.path = path;
     this.basename = basename;
     this.displayText = displayText;
@@ -69,7 +83,6 @@ export class Node {
     this.rawFrontmatter = frontmatter;
     this.normalizedBasename = normalizedBasename; 
 
-    // Lateral GATE starts defaulted to the 'left' vector, but can be updated via render calculations
     this.upperGate  = new Gate(this, 'up');
     this.lowerGate  = new Gate(this, 'down');
     this.friendGate = new Gate(this, 'left');
@@ -100,7 +113,7 @@ export class Node {
     const isIgnored = StringUtils.foundPart(path, optIgnoreFragments) || 
                       StringUtils.hasAnyOf(cleanLowercaseTags, optIgnoreTags);
 
-    return new Node(path, basename, displayText, nativeAliases, cleanLowercaseTags, isIgnored, frontmatter, normalizedBasename);
+    return new Node(file, path, basename, displayText, nativeAliases, cleanLowercaseTags, isIgnored, frontmatter, normalizedBasename);
   }
 
   /**
@@ -122,14 +135,34 @@ export class Node {
     const linkWrapper = itemDiv.createDiv({ cls: RV.LINKDIV });
 
     const linkEl = createEl('a', { 
-        cls: `${RV.A} ${RV.SUPERCHARGED_ATTRIB}`,
+        cls: `internal-link ${RV.A}`,
         attr: {
             'data-href': this.path,
             'draggable': 'true',
-            'data-link-tags': this.tags ? this.tags.join(' ') : "",
-            'data-link-path': this.path
+            'data-link-tags': this.tags.length > 0 ? this.tags.join(' ') : ""
         }
     });
+
+    // Hvis Re-Supercharged Links allerede har levert flyweight-data: stemple elementet ferdig i minnet!
+    if (this.sclHasMatch) {
+      linkEl.classList.add("scl-processed");
+      const clsLen = this.sclClasses.length;
+      for (let i = 0; i < clsLen; i++) {
+        const cls = this.sclClasses[i];
+        if (cls !== undefined) linkEl.classList.add(cls);
+      }
+      linkEl.setAttribute("data-scl-signature", this.sclSignature);
+      if (this.sclColor.length > 0) linkEl.style.setProperty("--scl-color", this.sclColor);
+      if (this.sclBgColor.length > 0 && this.sclBgColor !== "transparent") {
+        linkEl.style.setProperty("--scl-bg", this.sclBgColor);
+      }
+      if (this.sclIconBefore.length > 0) {
+        linkEl.style.setProperty("--scl-icon-before", `"${this.sclIconBefore}"`);
+      }
+      if (this.sclIconAfter.length > 0) {
+        linkEl.style.setProperty("--scl-icon-after", `"${this.sclIconAfter}"`);
+      }
+    }
 
     linkEl.createSpan( { text: this.displayText, cls: 'rv-text-span'} );
 

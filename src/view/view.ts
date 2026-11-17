@@ -1,7 +1,7 @@
 import myBrainPlugin from '../main.js';
 import { HoverPopover, TFile, WorkspaceLeaf, HoverParent, MarkdownView, FileView, Platform, ItemView, App, EventRef } from 'obsidian';
 import { AreaManager } from './AreaManager.js';
-import { RV } from '../constants.js';
+import { RV } from '../utils/constants.js';
 import { ExternalFeederScanner } from '../ExternalFeeder.js';
 
 // Import our isolated sub-managers
@@ -273,7 +273,7 @@ export class MyBrainView extends ItemView implements HoverParent {
     this.contentEl.on('click', '*', (event: MouseEvent) => {
       if (!Platform.isMobile || !event.target) return;
       const rawTarget = event.target as HTMLElement;
-      if (!rawTarget.closest('.focusable-note-link') && !rawTarget.closest('.rv-plusminus')) {
+      if (!rawTarget.closest(`.${RV.A}`) && !rawTarget.closest('.rv-plusminus')) {
         if (!this.isSuspended && this.isFullyStarted) this.clearTouchHoverState();
       }
     });
@@ -358,7 +358,7 @@ export class MyBrainView extends ItemView implements HoverParent {
    */
   private clearTouchHoverState(): void {
     const stuck: NodeListOf<HTMLElement> = this.contentEl.querySelectorAll(
-      ".focusable-note-link.is-hover-hovered, .focusable-note-link.is-hover-handled, .item.is-hover-neighbor, .item.is-pressed-origin"
+      `.${RV.A}.is-hover-hovered, .${RV.A}.is-hover-handled, .item.is-hover-neighbor, .item.is-pressed-origin`
     );
     stuck.forEach((el: HTMLElement) => el.classList.remove("is-hover-neighbor", "is-pressed-origin", "is-hovered"));
     

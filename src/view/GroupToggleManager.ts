@@ -1,5 +1,5 @@
-import { Node } from "../Node.js";
-import { RV } from "../constants.js";
+import { Node } from "../data/Node.js";
+import { RV } from "../utils/constants.js";
 
 export class GroupToggleManager {
   private containerEl: HTMLElement;
@@ -40,7 +40,7 @@ export class GroupToggleManager {
   public buildPlusMinusBtn(firstNoteDiv: HTMLElement, group: { tag: string; notes: Node[] }, startsClosed: boolean): HTMLElement {
     const count = group.notes.length.toString();
     const cleanTagName = group.tag.replace(/^#/, "");
-    const button = firstNoteDiv.createDiv(`${RV.PLUS_MINUS_BTN} ${RV.SUPERCHARGED_ATTRIB} ${RV.BORDERED} ${RV.ROUNDED}`);
+    const button = firstNoteDiv.createDiv(`${RV.PLUS_MINUS_BTN} ${RV.BORDERED} ${RV.ROUNDED}`);
     
     button.textContent = startsClosed ? `${RV.PLUS}${cleanTagName}(${count})` : `${RV.MINUS}${cleanTagName}(${count})`; 
     button.setAttribute("data-count", count);

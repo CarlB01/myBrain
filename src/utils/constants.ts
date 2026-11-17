@@ -45,7 +45,7 @@ export const RV = {
   /* 
    * Primary downstream tracking anchor class for myBrain active nodes.
    */
-  A: 'focusable-note-link',
+  A: 'rv-node-link',
   
   /*
    * Retained for backward parsing safety if referenced elsewhere in legacy files.
@@ -78,16 +78,6 @@ export const RV = {
   // Empty view state instructional text
   WELCOME: 'Please allow obsidian some time to prepare the files! \n'
       + 'To view graph, please open one of your notes.',
-
-  // ==========================================================================
-  // Third-Party Ecosystem Overrides
-  // ==========================================================================
-  
-  /* 
-   * Supercharged Links Compatibility Hooks: 
-   * Standardized universal baseline selector used by both core layouts and SCL engines.
-   */
-  SUPERCHARGED_ATTRIB: 'data-link-text',
 
 } as const;
 

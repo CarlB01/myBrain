@@ -1,17 +1,16 @@
-import { NetworkGraph } from "../NetworkGraph.js";
-import { Node } from "../Node.js";
+import { Node } from "../data/Node.js";
 import { debounce, Debouncer } from "obsidian";
-import { DrawingUtils } from "../DrawingUtils.js";
-import { Gate } from "../Gate.js";
-import { RV } from "../constants.js";
+import { DrawingUtils } from "../utils/DrawingUtils.js";
+import { RV } from "../utils/constants.js";
 import MyBrainPlugin from "../main.js";
 
-// Import our modular sub-managers from the view sub-folder layout
 import { NodeRenderer } from "./NodeRenderer.js";
 import { LayoutGeometry } from "./LayoutGeometry.js";
 import { GroupToggleManager } from "./GroupToggleManager.js";
 import { PopupManager } from "./PopupManager.js";
 import { HoverHighlightManager } from "./HoverHighlightManager.js";
+import { NetworkGraph } from "../data/NetworkGraph.js";
+import { Gate } from "../data/Gate.js";
 
 export class AreaManager {
   containerEl: HTMLElement;
@@ -25,8 +24,8 @@ export class AreaManager {
   private animationFrameId: number | null = null;
   private redrawQueued = false;
   private debouncedRender: Debouncer<[], void>;
+  private resizeObserver: ResizeObserver | null = null;
 
-  // Sub-managers declared with explicit types
   private toggleManager: GroupToggleManager;
   private popupManager: PopupManager;
   private hoverManager: HoverHighlightManager;
@@ -35,9 +34,6 @@ export class AreaManager {
   
   private delegatedHandlersBound = false;
   private boundClickHandler: ((event: MouseEvent) => void) | null = null;
-  private geometryRetryCount = 0;
-  private readonly maxGeometryRetries = 8;
-  private pendingInvalidLinks = false;
   private readonly cornerEpsilon = 6;
 
   constructor(graph: NetworkGraph, parentEl: HTMLElement, plugin: MyBrainPlugin) {
@@ -45,7 +41,6 @@ export class AreaManager {
     this.containerEl = parentEl;
     this.plugin = plugin;
 
-    // Guaranteed initialization inside the constructor to satisfy TypeScript compiler rules
     this.toggleManager = new GroupToggleManager(this.containerEl, this.requestRedraw.bind(this));
     this.popupManager = new PopupManager(this.containerEl, this.plugin);
     this.hoverManager = new HoverHighlightManager(this.containerEl, this.linkCache, this.nodeElByPath);
@@ -57,16 +52,34 @@ export class AreaManager {
   public initiate() {
     this.containerEl.addClass(RV.CONTAINER);
     
-    // Bind click delegation for group collapse/expand triggers
     const res = this.toggleManager.setup(this.delegatedHandlersBound);
     this.boundClickHandler = res.handler;
     this.delegatedHandlersBound = res.bound;
     
-    // Bind hover tracking for line highlighting
     this.hoverManager.setup();
+
+    // Erstatt resize-hacks med ResizeObserver + macOS dvale-beskyttelse
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        // Ignorer 0x0 når vinduet er skjult/i dvale på macOS
+        if (entry.contentRect.width === 0 || entry.contentRect.height === 0) return;
+      }
+      if (this.graph?.centerNote) {
+        // Hvis grafen ble tømt eller mangler innhold etter dvale, bygg på nytt; ellers bare oppdater linjer
+        if (!this.center?.isConnected) {
+          this.renderGraph();
+        } else {
+          this.requestRedraw();
+        }
+      }
+    });
+    this.resizeObserver.observe(this.containerEl);
   }
 
   public destroy() {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     this.debouncedRender.cancel();
     this.cancelPendingRedraw(); 
     this.linkCache.clear();
@@ -81,24 +94,23 @@ export class AreaManager {
     if (this.animationFrameId !== null) cancelAnimationFrame(this.animationFrameId);
 
     this.animationFrameId = window.requestAnimationFrame(() => {
-      this.animationFrameId = window.requestAnimationFrame(() => {
-        this.redrawQueued = false; this.animationFrameId = null;
-        if (!this.containerEl || !this.containerEl.isConnected) return;
-        
-        const rect = this.containerEl.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return;
-        
-        LayoutGeometry.allocateAreaHeights(this.containerEl, this.center, this.upper, this.left, this.lower);
-        LayoutGeometry.yieldIfLeftTall(this.containerEl, this.center);
-        LayoutGeometry.yieldIfRightTall(this.containerEl, this.center, this.upper);
-        
-        if (this.graph?.centerNote) this.drawAllGraphLines();
-      });
+      this.redrawQueued = false;
+      this.animationFrameId = null;
+      if (!this.containerEl || !this.containerEl.isConnected) return;
+      
+      const rect = this.containerEl.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      
+      if (this.graph?.centerNote) this.drawAllGraphLines();
     });
   }
 
   public renderGraph(): void {
     if (this.plugin.isAppPaused()) return;
+    // Ikke start ny DOM-bygging hvis vinduet er skjult/occluded på macOS
+    if (this.containerEl.isConnected && (this.containerEl.clientWidth === 0 || this.containerEl.clientHeight === 0)) {
+      return;
+    }
     this.debouncedRender();
   }
 
@@ -108,7 +120,7 @@ export class AreaManager {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
     }
-    this.redrawQueued = false; this.geometryRetryCount = 0; this.pendingInvalidLinks = false;
+    this.redrawQueued = false;
   }
   // #endregion
 
@@ -117,12 +129,13 @@ export class AreaManager {
     const centerNote = this.graph.centerNote;
     if (!centerNote || !this.containerEl?.isConnected) return;
 
+    // Dobbeltsjekk dimensjoner før vi tømmer DOM-en (hindrer blank skjerm etter Mac-dvale)
+    if (this.containerEl.clientWidth === 0 || this.containerEl.clientHeight === 0) return;
+
     this.containerEl.empty();
-    this.containerEl.className = "view-content rv-container is-calculating";
+    this.containerEl.className = "view-content rv-container";
 
     const fragment = createFragment();
-    this.containerEl.setAttribute(RV.LEFT_TALL, 'false');
-    this.containerEl.setAttribute(RV.RIGHT_TALL, 'false');
 
     this.center = fragment.createDiv({ cls: RV.AREA_CENTER });
     this.left = fragment.createDiv({ cls: RV.AREA_LEFT });
@@ -159,13 +172,8 @@ export class AreaManager {
     this.containerEl.appendChild(fragment);
     this.setupScrollEventListeners();
     
-    LayoutGeometry.allocateAreaHeights(this.containerEl, this.center, this.upper, this.left, this.lower);
-    LayoutGeometry.yieldIfLeftTall(this.containerEl, this.center);
-    LayoutGeometry.yieldIfRightTall(this.containerEl, this.center, this.upper);
-    
+    // CSS Grid har allerede plassert alt stabilt – tegn linjene umiddelbart
     this.drawAllGraphLines(); 
-
-    window.requestAnimationFrame(() => this.containerEl.classList.remove('is-calculating'));
   }
 
   private renderQuadrant(area: HTMLElement, collections: Node[][], areaName: string) {
@@ -215,7 +223,7 @@ export class AreaManager {
   private drawAllGraphLines() {
     const centerNote = this.graph.centerNote;
     if (!centerNote) return;
-    this.pendingInvalidLinks = false; this.nodeElByPath.clear();
+    this.nodeElByPath.clear();
     const offBy = LayoutGeometry.offBy(this.containerEl);
     if (!offBy) return;
     
@@ -230,7 +238,9 @@ export class AreaManager {
     };
 
     const visibleNotes = Array.from(this.graph.noteCache.values()).filter(n => n.isUsed && n.assignedArea !== "ignored");
-        for (const n of visibleNotes) if (n.div) this.nodeElByPath.set(n.path, n.div);
+    for (const n of visibleNotes) if (n.div) this.nodeElByPath.set(n.path, n.div);
+    for (const link of links.values()) link.used = false;
+
     for (const link of links.values()) link.used = false;
 
     for (const note of visibleNotes) {
@@ -245,28 +255,21 @@ export class AreaManager {
       lower: this.lower?.getBoundingClientRect() ?? null, left: this.left?.getBoundingClientRect() ?? null, right: this.right?.getBoundingClientRect() ?? null, ignored: null
     };
 
-    // ==========================================================================
-    // 🔍 HIGH-VELOCITY GEOMETRIC INTERSECTION LOG & GUARD
-    // Evaluation layer verifying if port connectors reside inside their active frames.
-    // ==========================================================================
     const canDraw = (from: Gate, to: Gate) => {
       if (!from?.svg || !to?.svg || !from.parentNote.div || !to.parentNote.div) return false;
-      const rA = from.svg.getBoundingClientRect(); const rB = to.svg.getBoundingClientRect();
+      const rA = from.svg.getBoundingClientRect();
+      const rB = to.svg.getBoundingClientRect();
       if (LayoutGeometry.isBadGateRect(rA, this.cornerEpsilon) || LayoutGeometry.isBadGateRect(rB, this.cornerEpsilon)) return false;
 
-      // Extract pre-computed DOMRect viewport mask for the source node quadrant in O(1)
       const vA = viewports[from.parentNote.assignedArea];
-      if (vA && (rA.bottom < vA.top || rA.top > vA.bottom)) return false;
+      if (vA && (rA.bottom < vA.top || rA.top > vA.bottom || rA.right < vA.left || rA.left > vA.right)) return false;
       
-      // Extract pre-computed DOMRect viewport mask for the target node quadrant in O(1)
       const vB = viewports[to.parentNote.assignedArea];
-      if (vB && (rB.bottom < vB.top || rB.top > vB.bottom)) return false;
+      if (vB && (rB.bottom < vB.top || rB.top > vB.bottom || rB.right < vB.left || rB.left > vB.right)) return false;
+
       return true;
     };
 
-    // ==========================================================================
-    // 2. THE GEOMETRICAL VECTOR RENDERING TRACE (Strictly 3 clean rules)
-    // ==========================================================================
     for (let i = 0; i < visibleNotes.length; i++) {
       const nodeA = visibleNotes[i]; if (!nodeA) continue;
       for (let j = i + 1; j < visibleNotes.length; j++) {
@@ -278,7 +281,7 @@ export class AreaManager {
             const sc = getColor(nodeB); DrawingUtils.drawLink(nodeA.lowerGate, nodeB.upperGate, links, offBy, canvas, sc);
             nodeA.lowerGate.svg!.classList.add('is-connected'); nodeB.upperGate.svg!.classList.add('is-connected');
             this.applyGateColor(nodeB.upperGate, colorful ? sc : null);
-          } else this.pendingInvalidLinks = true;
+          }
         }
         // RULE 2: B -> A (child)
         else if (nodeB.relations.children.has(nodeA) || nodeA.relations.parents.has(nodeB)) {
@@ -286,7 +289,7 @@ export class AreaManager {
             const sc = getColor(nodeA); DrawingUtils.drawLink(nodeB.lowerGate, nodeA.upperGate, links, offBy, canvas, sc);
             nodeB.lowerGate.svg!.classList.add('is-connected'); nodeA.upperGate.svg!.classList.add('is-connected');
             this.applyGateColor(nodeA.upperGate, colorful ? sc : null);
-          } else this.pendingInvalidLinks = true;
+          }
         }
         // RULE 3: friend
         else if (nodeA.relations.friends.has(nodeB) || nodeB.relations.friends.has(nodeA)) {
@@ -294,21 +297,14 @@ export class AreaManager {
             const sc = getColor(nodeB); DrawingUtils.drawLink(nodeA.friendGate, nodeB.friendGate, links, offBy, canvas, sc);
             nodeA.friendGate.svg!.classList.add('is-connected'); nodeB.friendGate.svg!.classList.add('is-connected');
             this.applyGateColor(nodeB.friendGate, colorful ? sc : null);
-          } else this.pendingInvalidLinks = true;
+          }
         }
       }
     }
 
-    // 3. GARBAGE COLLECTION HARVESTING: Purges dead bezier paths from the HTML DOM tree
     for (const [key, link] of this.linkCache.entries()) {
       if (!link.used) { link.svgElement.remove(); this.linkCache.delete(key); }
     }
-
-    // Deterministic recovery pass:
-    // If some links were skipped due to unstable/invalid gate geometry, schedule another redraw
-    if (this.pendingInvalidLinks && this.geometryRetryCount < this.maxGeometryRetries) {
-      this.geometryRetryCount++; this.requestRedraw();
-    } else this.geometryRetryCount = 0;
   }
 
   private setupScrollEventListeners() {
@@ -318,37 +314,18 @@ export class AreaManager {
     });
   }
 
-  /**
-   * Resolves display color from node link text using an optimized tiered lookup.
-   * Prioritizes high-velocity raw inline styles from Re-Supercharged Links (SCL) 
-   * to prevent layout thrashing, falling back to computed styles for legacy engines.
-   * 
-   * @param note The network node instance to harvest styles from.
-   * @param colorful Configuration flag indicating whether custom node coloring is active.
-   * @returns The extracted color string profile, or null if no custom style matches.
-   */
   private getLandingNodeColor(note: Node, colorful: boolean): string | null {
-    if (!colorful || !note.div) return null;
+    if (!colorful) return null;
+    if (note.sclColor.length > 0) return note.sclColor;
 
-    const linkEl: HTMLElement | null = note.div.querySelector(".data-link-text") as HTMLElement | null;
+    if (!note.div) return null;
+    const linkEl = note.div.querySelector<HTMLElement>(".data-link-text");
     if (!linkEl) return null;
 
-    // 1. Primary High-Velocity Path: Direct memory lookup of SCL injected inline-styles
-    const inlineColor: string = linkEl.style.color;
-    if (inlineColor && inlineColor.trim().length > 0) {
-      return inlineColor;
-    }
-
-    // 2. Secondary Fallback Path: Compute heavy style cascade matrices for legacy CSS engines
-    const computed: CSSStyleDeclaration = window.getComputedStyle(linkEl);
-    const computedColor: string = computed.color;
-
-    return computedColor && computedColor.trim().length > 0 ? computedColor : null;
+    const inlineColor = linkEl.style.getPropertyValue("--scl-color") || linkEl.style.color;
+    return inlineColor.trim().length > 0 ? inlineColor : null;
   }
 
-  /**
-   * Applies or removes gate color override with minimal DOM writes.
-   */
   private applyGateColor(gate: Gate, color: string | null): void {
     const circle = gate.svg?.querySelector("circle") as SVGCircleElement | null;
     if (!circle) return;

@@ -1,5 +1,5 @@
 import { Platform, Point } from "obsidian";
-import { RV } from "../constants.js";
+import { RV } from "../utils/constants.js";
 
 export class LayoutGeometry {
   /**
@@ -35,7 +35,6 @@ export class LayoutGeometry {
     upperH = Math.floor(Math.min(upperH, 0.5 * containerEl.clientHeight));
     
     const leftH = upperH + midScrollHeight;
-    const rightH = containerEl.clientHeight;
     
     let safeLower = Math.max(0, containerEl.clientHeight - (upperH + midScrollHeight));
     if (lowerScrollHeight > 0 && lowerScrollHeight < safeLower) {
@@ -44,7 +43,6 @@ export class LayoutGeometry {
     
     containerEl.style.setProperty("--rv-upper-max", `${upperH}px`);
     containerEl.style.setProperty("--rv-left-max", `${leftH}px`);
-    containerEl.style.setProperty("--rv-right-max", `${rightH}px`);
     containerEl.style.setProperty("--rv-lower-max", `${safeLower}px`);
   }
 
@@ -56,16 +54,6 @@ export class LayoutGeometry {
     const newValue = isLeftTall ? "true" : "false";
 
     if (currentValue !== newValue) containerEl.setAttribute(RV.LEFT_TALL, newValue);
-  }
-
-  public static yieldIfRightTall(containerEl: HTMLElement, center: HTMLElement, upper: HTMLElement): void {
-    const rightWrapper = containerEl.querySelector('.rv-area.right') as HTMLElement;
-    if (!rightWrapper) return;
-    const currentValue = containerEl.getAttribute(RV.RIGHT_TALL);
-    const isRightTall = rightWrapper.scrollHeight > (center.offsetHeight + upper.offsetHeight + 15);
-    const newValue = isRightTall ? "true" : "false";
-
-    if (currentValue !== newValue) containerEl.setAttribute(RV.RIGHT_TALL, newValue);
   }
 
   public static offBy(containerEl: HTMLElement): Point | null {

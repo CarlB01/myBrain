@@ -5,12 +5,7 @@
   --rv-bg: var(--background-primary); 
   --rv-line: var(--text-faint, #888888); 
   --rv-line-width: 0.04em; 
-  
-  --rv-upper-max: 22vh;
-  --rv-left-max: 35vh;
-  --rv-right-max: 75vh;
-  --rv-lower-max: 70vh;
-  
+    
   --rv-glow-scale: 1;
   --rv-glow-size: 0em;
   --rv-glow-inset-size: 0em;
@@ -56,10 +51,6 @@
 /* GEOMETRIC ENVELOPE ( GRID + AREAS + SVG layer) */
 /* =================================================================== */
 .workspace-leaf .workspace-leaf-content .view-content.rv-container {
-  /* =================================================================== */
-  /* 1. MAGNETIC CLUSTER ROW DESIGN 
-  Rows 1 and 5 act as flexible shock absorbers (1fr) that swallow all empty space,
-  symmetrically compressing rows 2, 3, and 4 together tightly in the center  */
   display: grid;
   grid-template-rows: 0 auto auto auto 0;
   grid-template-columns: clamp(4em, 33%, 40em) clamp(6em, 33%, 40em) clamp(4em, 33%, 40em);
@@ -73,7 +64,7 @@
   background-color: transparent; 
   overflow: hidden;
   box-sizing: border-box;
-  container-type: inline-size;
+  container-type: size; /* Gir tilgang til både cqw og cqh uten JS-måling */
 
   /* =================================================================== */
   /* 2. AREAS & QUADRANTS  */
@@ -89,59 +80,49 @@
     transform: translate(10%);
   }
 
-  /* CENTER & LATERAL AREAS (Row 3: Absolute layout origin axis) */
-  .rv-area.left, 
-  .rv-area.right,
+  /* CENTER AREA (Row 3: Absolute layout origin axis) */
   .rv-area.center {
-    grid-row: 3; 
-    align-self: center; /*vertically */
+    grid-column-start: 2;
+    grid-row: 3;
+    width: 125%;
+    transform: translate(10%);
+    justify-self: center;
+    align-self: center;
     overflow: visible;
     min-height: 0;
   }
 
+  /* LEFT AREA (Spans rows 2 and 3, locked stably to bottom of center axis) */
   .rv-area.left {
     grid-column-start: 1;
+    grid-row: 2 / span 2;
     margin-right: 0.3em;
+    align-self: end;
     overflow: visible;
-  } 
-  
-  .rv-area.right {
-    grid-column-start: 3;
-    margin-left: 0.3em;
-    overflow: visible;
+    min-height: 0;
   }
 
-  .rv-area.center {
-    grid-column-start: 2;
-    width: 125%;
-    transform: translate(10%);
-    justify-self: center; /* Horizontally */
+  /* RIGHT AREA (Spans rows 2 and 3, stops cleanly above lower area) */
+  .rv-area.right {
+    grid-column-start: 3;
+    grid-row: 2 / span 2;
+    margin-left: 0.3em;
+    align-self: end;
+    overflow: visible;
+    min-height: 0;
   }
 
   /* LOWER QUADRANT (Row 4: Pulls children tight up against center) */
   .rv-area.lower {
     grid-column-start: 1;
     grid-column-end: span 3; 
-    grid-row: 4; /* Compressed tightly into the lower slot below origo [dan] */
+    grid-row: 4; 
     margin: 1em 0 1em 0.35em;
     align-self: start; 
     align-items: center;
     justify-content: flex-start;
+    overflow: visible;
     min-height: 0;
-
-  }
-
-  /* ADAPTIVE RESPONSIVE FRAME GRID-CHECKS */
-  &[data-left-tall="true"] {
-    .rv-area.upper { grid-column-start: 2; }                       
-    .rv-area.left { grid-row: 2 / span 2; align-self: end; } 
-  }
-  &[data-right-tall="true"] {
-    .rv-area.lower { 
-      grid-column-start: 1;
-      grid-column-end: span 2; 
-    }                  
-    .rv-area.right { grid-row: 2 / span 3; align-self: center; } 
   }
 
   /* =================================================================== */
@@ -203,14 +184,77 @@
     touch-action: pan-y;
   }
   
-  /* Specific vertical heights constraints */
-  .rv-area.upper .rv-collection-wrapper { max-height: var(--rv-upper-max); }
-  .rv-area.left .rv-collection-wrapper { max-height: var(--rv-left-max); }
-  .rv-area.right .rv-collection-wrapper { max-height: var(--rv-right-max); } /* Exploits maximum horizontal canvas density on desktop frames */
+  .rv-area.upper .rv-collection-wrapper { 
+    max-height: 22cqh; 
+  }
+  .rv-area.left .rv-collection-wrapper { 
+    max-height: 36cqh; 
+  }
+
   .rv-area.lower .rv-collection-wrapper { 
-    max-height: var(--rv-lower-max); 
+    max-height: 44cqh; 
     padding-bottom: var(--rv-lower-padding-bottom);
   }
+  
+  /* HØYRE OMRÅDE: Maks 34cqh høy, vokser og scroller horisontalt */
+  .rv-area.right .rv-collection-wrapper {
+    display: flex;
+    flex-direction: row;
+    max-height: 34cqh;
+    overflow-x: auto;
+    overflow-y: hidden;
+    touch-action: pan-x;
+    gap: 0.4em;
+  }
+
+  .rv-area.right .rv-collection {
+    width: max-content;
+    height: 100%;
+  }
+
+  /* HØYRE OMRÅDE: Vertikal flyt (reflow) som pakker over i nye kolonner til høyre */
+  .rv-area.right .rv-collection-wrapper {
+    display: flex;
+    flex-direction: row;
+    max-height: 34cqh;
+    overflow-x: auto;
+    overflow-y: hidden;
+    touch-action: pan-x;
+    gap: 0.4em;
+  }
+
+  .rv-area.right .rv-collection {
+    width: max-content;
+    height: 100%;
+  }
+
+  .rv-area.right .rv-columns-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    max-height: 34cqh;
+    width: max-content;
+    columns: unset;
+    gap: 0.1em 0.35em;
+    overflow-x: visible;
+    overflow-y: hidden;
+  }
+
+  /* Oppløser gruppe-wrapperen i layouten så hvert item kan flyte fritt over i neste kolonne */
+  .rv-area.right .rv-groups {
+    display: contents;
+  }
+
+  /* Gir hvert item den samme stramme kolonnebredden som i smale sidepaneler */
+  .rv-area.right .item {
+    width: clamp(4.5em, 24cqw, 11em);
+    max-width: clamp(4.5em, 24cqw, 11em);
+    box-sizing: border-box;
+    flex-shrink: 0;
+  }
+
+
 }
 
 /* =================================================================== */
@@ -331,12 +375,11 @@
 /* =================================================================== */
 /* 8. NOTE-LINK (Hover motors & text wrapping safeguards) */
 .rv-container {
-  .focusable-note-link {
+  .rv-node-link {
     position: relative;
     display: inline-block;
     box-sizing: border-box;
     text-align: center;
-    text-decoration: none;
     white-space: normal;
     word-wrap: break-word;
     word-break: break-word;
@@ -351,25 +394,22 @@
     line-height: 1.1; /* prevents extra added air around the link */
     border-radius: 0.25em;
     
-    /* Theme adaptive text mask framework: */
-    backdrop-filter: blur(0px); 
-    -webkit-backdrop-filter: blur(0px);
-    background-color: var(--rv-bg-color);
+    /* 1. Standard matt glass-effekt for noder UTEN bakgrunnsfarge */
+    background-color: color-mix(in srgb, var(--rv-bg), transparent 45%);
+    backdrop-filter: blur(1px);
+    -webkit-backdrop-filter: blur(1px);
     transition: all var(--glow-speed) ease-out;
   }
-  
-  .focusable-note-link::before,
-  .focusable-note-link::after {
-    font-size: calc(var(--rv-font-size)* 0.7); 
-    transform: translateY(-15%);
-    vertical-align: middle; 
-    line-height: 1;
-    display: inline-block;
-    white-space: nowrap;
-  }
 
-  .item.is-hover-neighbor .focusable-note-link,
-  .item.is-pressed-origin .focusable-note-link { 
+  /* 2. Noder MED bakgrunnsfarge (--scl-bg): gjør fargen 25% gjennomskinnelig med samme glass-effekt */
+  a.internal-link.rv-node-link.scl-processed[style*="--scl-bg"] {
+    background-color: color-mix(in srgb, var(--scl-bg), transparent 45%);
+    backdrop-filter: blur(1px);
+    -webkit-backdrop-filter: blur(1px);
+  }
+  
+  .item.is-hover-neighbor .rv-node-link,
+  .item.is-pressed-origin .rv-node-link { 
     border: var(--rv-link-border-hovered);
     backdrop-filter: blur(0.1em);
     -webkit-backdrop-filter: blur(0.1em);
@@ -386,8 +426,8 @@
 /* HOVER ON DESKTOP */
 @media (hover: hover) and (pointer: fine) { 
   .rv-container {
-    .item:hover .focusable-note-link, 
-    .item.is-hover-neighbor .focusable-note-link {
+    .item:hover .rv-node-link, 
+    .item.is-hover-neighbor .rv-node-link {
       border: var(--rv-link-border-hovered);
       backdrop-filter: blur(0.1em);
       -webkit-backdrop-filter: blur(0.1em);
@@ -718,33 +758,4 @@
     font-size: calc(var(--rv-font-size)* 1.2);
     line-height: 1.5;
   }
-}
-
-
-/* Sørg for at den obsidian-kompatible linken oppfører seg stabilt i myBrain-noden */
-.rv-linkdiv a.internal-link.data-link-text {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    text-decoration: none;
-    white-space: nowrap;
-    /* La linker arve eller bruke stiler uten at det brekker myBrain-boksen */
-}
-
-/* Hvis eldre Supercharged Links dytter inn ikoner via pseudo-elementer */
-.rv-linkdiv a.internal-link.data-link-text::before,
-.rv-linkdiv a.internal-link.data-link-text::after {
-    display: inline-block;
-    flex-shrink: 0;
-    vertical-align: middle;
-}
-
-/* SCL JIT Interop: Lar inline tekstfarge og fontstil slippe igjennom på myBrain-noder */
-.rv-container .focusable-note-link[style*="color"] {
-    color: inherit !important;
-}
-.rv-container .focusable-note-link[style*="font"] {
-    font-weight: inherit !important;
-    font-style: inherit !important;
 }
