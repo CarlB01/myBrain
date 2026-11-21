@@ -1,4 +1,4 @@
-import { Plugin, Notice, WorkspaceLeaf, TFile, TAbstractFile, debounce, Debouncer } from 'obsidian';
+import { Plugin, Notice, WorkspaceLeaf, TFile, TAbstractFile, debounce, Debouncer, Platform } from 'obsidian';
 import { SettingTab } from "./SettingTab.js";
 import { MyBrainView } from './view/view.js';
 import { RV } from './utils/constants.js';
@@ -52,6 +52,10 @@ export default class MyBrainPlugin extends Plugin {
       id: 'open-view',
       name: 'Open view',
       callback: () => { void this.activateGraphView(); },
+    });
+
+    this.app.workspace.onLayoutReady(() => {
+      this.activateGraphView();
     });
   }
 
@@ -158,6 +162,8 @@ export default class MyBrainPlugin extends Plugin {
 
   private registerAppLifecycleEvents(): void {
     const suspendAllViews = (): void => {
+      if (!Platform.isMobile) return;
+
       this.appPaused = true;
       this.app.workspace.getLeavesOfType(RV.VIEW_TYPE).forEach((leaf: WorkspaceLeaf) => {
         if (leaf.view instanceof MyBrainView) {
@@ -169,12 +175,18 @@ export default class MyBrainPlugin extends Plugin {
     const resumeAllViews = (): void => {
       if (Date.now() - this.resumedAt < 300) return;
       
+      const wasPaused = this.appPaused;
       this.appPaused = false;
       this.markResumedNow();
 
       this.app.workspace.getLeavesOfType(RV.VIEW_TYPE).forEach((leaf: WorkspaceLeaf) => {
         if (leaf.view instanceof MyBrainView) {
-          leaf.view.resumeFromBackground();
+          if (wasPaused || leaf.view.isSuspended) {
+            leaf.view.resumeFromBackground();
+          } else {
+            // På macOS: Sikre at SVG-linjer og graf friskes opp etter dvale/fokus
+            leaf.view.ensureGraphVisibleAfterWake();
+          }
         }
       });
     };
@@ -183,6 +195,8 @@ export default class MyBrainPlugin extends Plugin {
       if (document.hidden) suspendAllViews();
       else resumeAllViews();
     });
+    this.registerDomEvent(window, 'focus', () => resumeAllViews());
+    this.registerDomEvent(window, 'pageshow', () => resumeAllViews());
   }
 
   async activateGraphView(): Promise<void> {

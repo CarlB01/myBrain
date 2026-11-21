@@ -11,9 +11,6 @@ export class ViewLinkHandler {
     this.view = view;
   }
 
-  /**
-   * Hooks pointer events directly into core container document streams.
-   */
   public registerEvents(contentEl: HTMLElement, hoverParent: HoverParent): void {
     contentEl.on('click', `.${RV.A}`, (event: MouseEvent, target: HTMLElement) => {
       event.preventDefault();
@@ -24,6 +21,9 @@ export class ViewLinkHandler {
     contentEl.on('mouseover', `.${RV.A}`, (event: MouseEvent, target: HTMLElement) => {
       this.lastMouseEvent = event;
       this.lastMouseTarget = target;
+
+      // Oppdater linjene umiddelbart når hover/tema/SCL endrer størrelse på noden
+      this.view.areaManager?.requestRedraw();
 
       if (Platform.isMobile) {
         const oldOrigin: NodeListOf<HTMLElement> = contentEl.querySelectorAll('.item.is-pressed-origin');
@@ -45,6 +45,16 @@ export class ViewLinkHandler {
       target.classList.remove('is-hovered');
       this.lastMouseEvent = null;
       this.lastMouseTarget = null;
+
+      // Trekk linjene tilbake når noden krymper til normal størrelse
+      this.view.areaManager?.requestRedraw();
+    });
+
+    // Fanger opp slutten på CSS-animasjonen (scale 1.05 / tema-overgang) for 100 % presisjon
+    this.view.registerDomEvent(contentEl, 'transitionend', (event: TransitionEvent) => {
+      if (event.propertyName === 'transform' || event.propertyName === 'border-width' || event.propertyName === 'padding') {
+        this.view.areaManager?.requestRedraw();
+      }
     });
 
     this.view.registerDomEvent(window, 'keydown', (event: KeyboardEvent) => {
@@ -60,7 +70,8 @@ export class ViewLinkHandler {
 
     this.view.registerDomEvent(window, 'keyup', (event: KeyboardEvent) => {
       if (event.key === "Meta" || event.key === "Control") {
-        const elements: NodeListOf<HTMLElement> = contentEl.querySelectorAll(`${RV.A}.is-hovered`);
+        // Rettet: La til punktum foran ${RV.A} slik at CSS-selektoren matcher klassen
+        const elements: NodeListOf<HTMLElement> = contentEl.querySelectorAll(`.${RV.A}.is-hovered`);
         elements.forEach((el: HTMLElement) => el.classList.remove("is-hovered"));
       }
     });

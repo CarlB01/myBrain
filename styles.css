@@ -10,10 +10,11 @@
   --rv-glow-size: 0em;
   --rv-glow-inset-size: 0em;
   --rv-glow-speed: 0.08s;
+  --rv-blur: blur(0.2em);
   
   --rv-lower-padding-bottom: max(0.5em, env(safe-area-inset-bottom));
   --rv-link-border: 0.12em solid transparent;
-  --rv-link-border-hovered: 0.12em solid var(--text-accent);
+  --rv-link-border-hovered: 0.12em solid currentColor;
 }
 
 /* SIDEDOCK DEPENDANT VARIABLES (PC or non-PC) */
@@ -43,8 +44,8 @@
   
   --rv-font-size: calc(var(--font-text-size, 11px) * 0.75);
   --rv-bg-color: color-mix(in srgb, var(--rv-bg), transparent 20%);
-  --rv-link-box-shadow: 0 0 var(--rv-glow-size) var(--text-accent), 
-                  inset 0 0 0 var(--rv-glow-inset-size) var(--text-accent);
+  --rv-link-box-shadow: 0 0 var(--rv-glow-size) currentColor, 
+                  inset 0 0 0 var(--rv-glow-inset-size) currentColor;
 }
 
 /* =================================================================== */
@@ -53,7 +54,8 @@
 .workspace-leaf .workspace-leaf-content .view-content.rv-container {
   display: grid;
   grid-template-rows: 0 auto auto auto 0;
-  grid-template-columns: clamp(4em, 33%, 40em) clamp(6em, 33%, 40em) clamp(4em, 33%, 40em);
+  /* Standard når venstre side har innhold: beskytter venstre item mot å klemmes under 5.5em */
+  grid-template-columns: minmax(5.5em, 1fr) minmax(6em, max-content) minmax(4em, 2.2fr);
   align-content: center; 
   position: absolute;
   top: 0;
@@ -64,7 +66,12 @@
   background-color: transparent; 
   overflow: hidden;
   box-sizing: border-box;
-  container-type: size; /* Gir tilgang til både cqw og cqh uten JS-måling */
+  container-type: size;
+
+  /* Når venstre område er helt tomt: kollaps kolonne 1 til 0px og gi all plass til midten/høyre */
+  &.rv-no-left {
+    grid-template-columns: 0px minmax(6em, max-content) minmax(4em, 1fr);
+  }
 
   /* =================================================================== */
   /* 2. AREAS & QUADRANTS  */
@@ -93,19 +100,30 @@
   }
 
   /* LEFT AREA (Spans rows 2 and 3, locked stably to bottom of center axis) */
+  /* Standard (1-3 items): Ligger på rad 3 og sentreres 100 % eksakt mot midtlinjen til center! */
   .rv-area.left {
     grid-column-start: 1;
-    grid-row: 2 / span 2;
+    grid-row: 3;
     margin-right: 0.3em;
-    align-self: end;
+    align-self: center;
     overflow: visible;
     min-height: 0;
   }
 
+  /* Når venstre side får mange items (4+ items i kolonnen): 
+     Spenn over rad 2 og 3 med align-self: end slik at den vokser oppover i øvre venstre kvadrant! */
+  .rv-area.left:has(.rv-flex-col > .item:nth-child(4)),
+  .rv-area.left:has(.rv-groups > .item:nth-child(4)) {
+    grid-row: 2 / span 2;
+    align-self: end;
+  }
   /* RIGHT AREA (Spans rows 2 and 3, stops cleanly above lower area) */
   .rv-area.right {
     grid-column-start: 3;
     grid-row: 2 / span 2;
+    width: 100%;
+    min-width: 0;
+    justify-self: stretch;
     margin-left: 0.3em;
     align-self: end;
     overflow: visible;
@@ -125,7 +143,7 @@
     min-height: 0;
   }
 
-  /* =================================================================== */
+    /* =================================================================== */
   /* 3. SVG LAYER + LINK PATHS  */
   svg.rv-svg-layer {
     position: absolute; 
@@ -137,12 +155,13 @@
     height: 100%;
     min-width: 100%;
     min-height: 100%;
-    z-index: -1;
-    pointer-events: none; /* Disables path tracking intercepting mouse events */
-    
-    /* iOS FIX: Minimal transform to stabilize rendering */
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
+    z-index: 0; /* Ligger rett bak .rv-area (z-index: 1) så backdrop-filter ser linjene! */
+    pointer-events: none;
+  }
+
+  .rv-area {
+    position: relative;
+    z-index: 1;
   }
   
   /* LINES standard */
@@ -156,11 +175,16 @@
 
   /* CONNECTED LINES GLOW */
   .rv-link-path.is-hover-link {
+    color: var(--link-color, var(--text-accent));
     stroke-width: calc(var(--rv-line-width) * 2.5);
-    filter: drop-shadow(0 0 0.22em var(--text-accent));
+    filter: drop-shadow(0 0 0.22em currentColor);
     opacity: 1;
   }
+  .rv-link-path.is-hover-link:not([style*="stroke"]) {
+    stroke: currentColor;
+  }
 
+  
   /* Safely unmounts hidden path connections from rendering cycles when out of bounds */
   .is-hidden,
   svg.is-hidden {
@@ -171,7 +195,7 @@
 /* =================================================================== */
 /* 4. BOX MODELS & VIEWPORT WRAPPERS  */
 .rv-container {
-  /* Scroll engine wrapper block */
+  /* Standard vertikal scroll-engine (gjelder upper & left) */
   .rv-collection-wrapper {
     display: flex;
     flex-direction: column;
@@ -180,81 +204,123 @@
     box-sizing: border-box;
     overflow-y: auto; 
     overflow-x: hidden; 
-    -webkit-overflow-scrolling: touch; /* Preserves native momentum scrolling on iOS */
+    -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
   }
   
-  .rv-area.upper .rv-collection-wrapper { 
-    max-height: 22cqh; 
-  }
-  .rv-area.left .rv-collection-wrapper { 
-    max-height: 36cqh; 
+  .rv-area.upper .rv-collection-wrapper { max-height: 42cqh; }
+  .rv-area.left .rv-collection-wrapper  { max-height: 44cqh; }
+
+  /* ----------------------------------------------------------------- */
+  /* FELLES HORISONTAL SCROLL & FADE-MASKE (LOWER + RIGHT)             */
+  /* ----------------------------------------------------------------- */
+  :is(.rv-area.lower, .rv-area.right) {
+    --fade-left: 8px;
+    --fade-right: 14px;
+    min-width: 0;
+
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0px,
+      black var(--fade-left),
+      black calc(100% - var(--fade-right)),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent 0px,
+      black var(--fade-left),
+      black calc(100% - var(--fade-right)),
+      transparent 100%
+    );
+
+    .rv-collection-wrapper {
+      overflow-x: auto;
+      overflow-y: hidden;
+      touch-action: pan-x;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .rv-groups {
+      display: contents;
+    }
+
+    .item {
+      box-sizing: border-box;
+      flex-shrink: 0;
+    }
   }
 
-  .rv-area.lower .rv-collection-wrapper { 
-    max-height: 44cqh; 
-    padding-bottom: var(--rv-lower-padding-bottom);
-  }
-  
-  /* HØYRE OMRÅDE: Maks 34cqh høy, vokser og scroller horisontalt */
-  .rv-area.right .rv-collection-wrapper {
-    display: flex;
-    flex-direction: row;
-    max-height: 34cqh;
-    overflow-x: auto;
-    overflow-y: hidden;
-    touch-action: pan-x;
-    gap: 0.4em;
-  }
-
-  .rv-area.right .rv-collection {
-    width: max-content;
-    height: 100%;
-  }
-
-  /* HØYRE OMRÅDE: Vertikal flyt (reflow) som pakker over i nye kolonner til høyre */
-  .rv-area.right .rv-collection-wrapper {
-    display: flex;
-    flex-direction: row;
-    max-height: 34cqh;
-    overflow-x: auto;
-    overflow-y: hidden;
-    touch-action: pan-x;
-    gap: 0.4em;
-  }
-
-  .rv-area.right .rv-collection {
-    width: max-content;
-    height: 100%;
-  }
-
-  .rv-area.right .rv-columns-wrapper {
-    display: flex;
-    flex-direction: column;
-    flex-wrap: wrap;
-    align-content: flex-start;
-    max-height: 34cqh;
-    width: max-content;
-    columns: unset;
-    gap: 0.1em 0.35em;
-    overflow-x: visible;
-    overflow-y: hidden;
-  }
-
-  /* Oppløser gruppe-wrapperen i layouten så hvert item kan flyte fritt over i neste kolonne */
-  .rv-area.right .rv-groups {
-    display: contents;
-  }
-
-  /* Gir hvert item den samme stramme kolonnebredden som i smale sidepaneler */
-  .rv-area.right .item {
-    width: clamp(4.5em, 24cqw, 11em);
-    max-width: clamp(4.5em, 24cqw, 11em);
-    box-sizing: border-box;
-    flex-shrink: 0;
+  /* Workaround for iOS WebKit-bug: backdrop-filter inni mask-image + overflow-x klipper hardt */
+  @supports (-webkit-touch-callout: none) {
+    .workspace-leaf .view-content.rv-container :is(.rv-area.lower, .rv-area.right) .rv-node-link {
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      background-color: color-mix(in srgb, var(--scl-bg, var(--rv-bg)), transparent 15%);
+    }
   }
 
 
+  /* ----------------------------------------------------------------- */
+  /* NEDRE OMRÅDE (LOWER) - Spesifikke tilpasninger                    */
+  /* ----------------------------------------------------------------- */
+  .rv-area.lower {
+    .rv-collection-wrapper {
+      flex-direction: column;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      max-height: 44cqh;
+      gap: 0.1em 0.35em;
+      padding: 0.35em 0.5em var(--rv-lower-padding-bottom) 0.5em;
+    }
+
+    .rv-collection,
+    .rv-columns-wrapper {
+      display: contents;
+    }
+
+    .item {
+      width: clamp(5em, 22cqw, 12em);
+      max-width: clamp(5em, 22cqw, 12em);
+    }
+  }
+
+  /* ----------------------------------------------------------------- */
+  /* HØYRE OMRÅDE (RIGHT) - Spesifikke tilpasninger                    */
+  /* ----------------------------------------------------------------- */
+  .rv-area.right {
+    --fade-left: 18px;
+    --fade-right: 12px;
+
+    .rv-collection-wrapper {
+      flex-direction: row;
+      max-height: 46cqh;
+      gap: 0.4em;
+      padding-left: 1.2em;
+    }
+
+    .rv-collection {
+      width: max-content;
+      height: 100%;
+    }
+
+    .rv-columns-wrapper {
+      display: flex;
+      flex-direction: column;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      max-height: 46cqh;
+      width: max-content;
+      columns: unset;
+      gap: 0.1em 0.35em;
+      overflow: visible;
+    }
+
+    .item {
+      width: clamp(4.5em, 24cqw, 11em);
+      max-width: clamp(4.5em, 24cqw, 11em);
+    }
+  }
 }
 
 /* =================================================================== */
@@ -292,45 +358,97 @@
   .rv-columns-wrapper.rv-2-6-items-group {
     column-count: 2;
   }
+
+  /* =================================================================== */
+  /* UPPER & LEFT: Ekte vertikale flex-kolonner med automatisk 1-kolonne fallback */
+  /* =================================================================== */
+  .rv-area.upper,
+  .rv-area.left {
+    container-type: inline-size; /* Lar hver kvadrant måle sin egen faktiske bredde */
+  }
+
+  .rv-area.upper .rv-collection,
+  .rv-area.left .rv-collection {
+    width: 100%;
+  }
+
+  .rv-area.upper .rv-columns-wrapper,
+  .rv-area.left .rv-columns-wrapper {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0.3em;
+    columns: unset;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    padding: 0.35em;
+  }
+
+  .rv-area.upper .rv-flex-col,
+  .rv-area.left .rv-flex-col {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0%;
+    width: 50%;
+    min-width: 0;
+    gap: 0.15em;
+  }
+
+  /* Når selve området blir smalt (< 14em), slås kolonnene sammen til 1 bred kolonne */
+  @container (max-width: 14em) {
+    .rv-area.upper .rv-columns-wrapper,
+    .rv-area.left .rv-columns-wrapper {
+      flex-direction: column;
+      gap: 0.15em;
+    }
+
+    .rv-area.upper .rv-flex-col,
+    .rv-area.left .rv-flex-col {
+      width: 100%;
+      flex: none;
+    }
+  }
+
+  .rv-area.upper .rv-groups,
+  .rv-area.left .rv-groups {
+    display: contents;
+  }
+
+  .rv-area.upper .item,
+  .rv-area.left .item {
+    min-width: 0;
+    width: 100%;
+  }
+
 }
 
 /* =================================================================== */
 /* 6. ITEM  */
 .rv-container {
-  /* Node block cell boundaries. */
-  /* Standardized strictly under relative positioning rules to act as vector gate anchor roots. */
   .item {
-    display: flex; 
+    position: relative;
+    display: flex;
     flex-direction: row;
-    box-sizing: border-box; /* prevents outer box from growing if padding/border */
-    align-items: center;  
-    justify-content: center; 
-    position: relative; 
-    overflow: visible; 
-    -webkit-column-break-inside: avoid;
-    page-break-inside: avoid;
-    
-    /* Strict fragmentation shields forbidding column breakage mid-cell */
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
     padding: 0.3em;
+    overflow: visible;
     z-index: 2;
 
-    /* Maskinvare-akselerasjon som låser elementet til sitt eget GPU-lag */
-    will-change: transform, box-shadow;
-    transform: scale(1);
-  };
-
-  /* Explicit top padding gap deployed only when structural cluster headers fire */
-  /* Explicit top padding gap deployed only when structural cluster headers fire */
-  .item.rv-first-in-group {
-    margin-top: 1.38em;
-    display: flex;
-    flex-direction: column; /* 💡 Tvinger knappen og lenken til å ligge som to etasjer */
-    align-items: center;    /* Sentrerer innholdet horisontalt */
-    justify-content: center;
-    overflow: visible;
+    /* Hindrer at kort splittes på tvers av kolonner */
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
-  /* Standard visibility killer layout schema */
+  /* Når et kort er først i en gruppe: stable +/- knapp og lenke vertikalt */
+  .item.rv-first-in-group {
+    flex-direction: column;
+    margin-top: 1.38em;
+  }
+
   .item.hidden {
     display: none;
   }
@@ -373,7 +491,7 @@
 }
 
 /* =================================================================== */
-/* 8. NOTE-LINK (Hover motors & text wrapping safeguards) */
+/* 8. NOTE-LINK (Layout-sikring & hover-glød uten å overstyre SCL) */
 .rv-container {
   .rv-node-link {
     position: relative;
@@ -385,57 +503,80 @@
     word-break: break-word;
     overflow: visible; 
     cursor: default;
-    border: var(--rv-link-border);
-
     min-width: 0;
-    padding: 0.02em 0.4em;
     font-size: var(--rv-font-size); 
+    line-height: 1.1;
 
-    line-height: 1.1; /* prevents extra added air around the link */
-    border-radius: 0.25em;
-    
-    /* 1. Standard matt glass-effekt for noder UTEN bakgrunnsfarge */
-    background-color: color-mix(in srgb, var(--rv-bg), transparent 45%);
-    backdrop-filter: blur(1px);
-    -webkit-backdrop-filter: blur(1px);
-    transition: all var(--glow-speed) ease-out;
+    transition: box-shadow var(--rv-glow-speed) ease-out;
   }
 
-  /* 2. Noder MED bakgrunnsfarge (--scl-bg): gjør fargen 25% gjennomskinnelig med samme glass-effekt */
+  /* Standard utseende KUN for noder som IKKE er stylet av Re-Supercharged Links */
+  .rv-node-link:not(.scl-processed) {
+    padding: 0.05em 0.4em;
+    border-radius: 0.25em;
+    background-color: color-mix(in srgb, var(--rv-bg), transparent 45%);
+    backdrop-filter: var(--rv-blur);
+    -webkit-backdrop-filter: var(--rv-blur);
+  }
+
+  /* Noder MED SCL, men UTEN egen bakgrunn: gi matt glass så linjer bak viskes ut */
+  a.internal-link.rv-node-link.scl-processed:not([style*="--scl-bg"]) {
+    background-color: color-mix(in srgb, var(--rv-bg), transparent 45%);
+    backdrop-filter: var(--rv-blur);
+    -webkit-backdrop-filter: var(--rv-blur);
+  }
+
+  /* Noder MED SCL og egen bakgrunnsfarge (--scl-bg): gjør den 45 % gjennomsiktig med matt glass */
   a.internal-link.rv-node-link.scl-processed[style*="--scl-bg"] {
     background-color: color-mix(in srgb, var(--scl-bg), transparent 45%);
-    backdrop-filter: blur(1px);
-    -webkit-backdrop-filter: blur(1px);
+    backdrop-filter: var(--rv-blur);
+    -webkit-backdrop-filter: var(--rv-blur);
+  }
+
+  /* Arv SCL-forgrunnsfargen til currentColor slik at hover-gløden får riktig farge */
+  a.internal-link.rv-node-link.scl-processed[style*="--scl-color"] {
+    color: var(--scl-color);
+  }
+
+  /* Skaler hele .rv-linkdiv (lenke + porter sammen) ved hover/touch */
+  .rv-linkdiv {
+    transition: transform var(--rv-glow-speed) ease-out;
   }
   
+  .item.is-hover-neighbor .rv-linkdiv,
+  .item.is-pressed-origin .rv-linkdiv {
+    transform: var(--rv-link-transform);
+    z-index: 10;
+  }
+
   .item.is-hover-neighbor .rv-node-link,
   .item.is-pressed-origin .rv-node-link { 
-    border: var(--rv-link-border-hovered);
-    backdrop-filter: blur(0.1em);
-    -webkit-backdrop-filter: blur(0.1em);
-    transform: var(--rv-link-transform);
     box-shadow: var(--rv-link-box-shadow);
   }
 
-  /* Forces text-spans to break row blocks inside frames smoothly */
   .rv-text-span {
     display: inline; 
-    pointer-events: none; /* Shields cursor bounds from Obsidian JIT pointer collisions */
+    pointer-events: none;
   }
 }
+
 /* HOVER ON DESKTOP */
 @media (hover: hover) and (pointer: fine) { 
   .rv-container {
+    .item:hover .rv-linkdiv,
+    .item.is-hover-neighbor .rv-linkdiv {
+      transform: var(--rv-link-transform);
+      z-index: 10;
+    }
+
     .item:hover .rv-node-link, 
     .item.is-hover-neighbor .rv-node-link {
-      border: var(--rv-link-border-hovered);
-      backdrop-filter: blur(0.1em);
-      -webkit-backdrop-filter: blur(0.1em);
-      transform: var(--rv-link-transform);
       box-shadow: var(--rv-link-box-shadow);
     }
   }
 }
+
+
 /* =================================================================== */
 /* 9. GATES (Vector docking nodes) */
 .rv-container {
@@ -637,8 +778,8 @@
     gap: 0px;
     background-color: var(--rv-bg-color);
     border: var(--rv-link-border-hovered);
-    backdrop-filter: blur(0.1em);
-    -webkit-backdrop-filter: blur(0.1em);
+    backdrop-filter: var(--rv-blur);
+    -webkit-backdrop-filter: var(--rv-blur);
     box-shadow: var(--rv-link-box-shadow);
   }
 

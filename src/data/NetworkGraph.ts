@@ -244,9 +244,7 @@ export class NetworkGraph {
     if (this.sclBridge.isAvailable() && this.noteCache.size > 0) {
       const activeFiles: TFile[] = [];
       for (const note of this.noteCache.values()) {
-        if (note.isUsed) {
-          activeFiles.push(note.file);
-        }
+        if (note.isUsed) activeFiles.push(note.file);
       }
 
       const styleMap = await this.sclBridge.resolveBatch(activeFiles, 5);

@@ -156,9 +156,14 @@ export class MyBrainView extends ItemView implements HoverParent {
     }
 
     this.clearTouchHoverState();
-    await this.openLinkInAdjacentPane(path);
+
+    // 1. Lås ny senter-fil og oppdater grafen FØRST (slik at active-leaf-change ikke overskriver den)
     this.onFileChange(selectedFile);
+
+    // 2. Åpne filen i nabo-panelet etterpå
+    await this.openLinkInAdjacentPane(path);
   }
+
   // #endregion
 
   // #region DEBOUNCE TARGET IMPLEMENTATIONS
@@ -286,47 +291,74 @@ export class MyBrainView extends ItemView implements HoverParent {
     welcomeDiv.createEl("p", { text: RV.WELCOME, cls: "rv-welcome-text" });
   }
 
-  /**
-   * Intelligently dispatches a file open routing cycle targeting adjacent split editor panes.
-   * Leverages active history maps to safely locate the most recently active container view.
-   * 
-   * @param filename The raw target filename text to navigate towards.
-   */
-  private async openLinkInAdjacentPane(filename: string): Promise<void> {
-    const file: TFile | null = this.fileResolver.getFile(filename);
-    if (!file || !this.plugin.networkGraph.centerNote) return;
-    
-    const oldCenterFile: TFile | null = this.app.vault.getFileByPath(this.plugin.networkGraph.centerNote.path);
-    if (!oldCenterFile) return;
-    
-    let targetLeaf: WorkspaceLeaf | null = null;
-    this.app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
-      if (leaf.view instanceof FileView && leaf.view.file?.path === oldCenterFile.path) {
-        targetLeaf = leaf;
-      }
-    });
+  public ensureGraphVisibleAfterWake(): void {
+    if (!this.isFullyStarted || !this.contentEl) return;
 
-    if (!targetLeaf) {
-      const recentLeaf: WorkspaceLeaf | null = this.app.workspace.getMostRecentLeaf();
-      if (recentLeaf && ['empty', 'markdown'].contains(recentLeaf.view.getViewType())) {
-        targetLeaf = recentLeaf;
-      }
+    if (this.isDomSuspended) {
+      this.restoreDomAfterSuspend();
     }
 
+    const activeFile: TFile | null = this.getMostRecentMarkdownFile();
+    if (!activeFile) return;
+
+    // Hvis DOM-en er tom eller filen har endret seg mens vinduet sov, bygg på nytt; ellers bare tegn linjene
+    if (!this.areaManager?.center?.isConnected || activeFile.path !== this.currentFilePath) {
+      this.onFileChange(activeFile);
+    } else {
+      this.areaManager.requestRedraw();
+    }
+  }
+
+  private async openLinkInAdjacentPane(filename: string): Promise<void> {
+    const file: TFile | null = this.fileResolver.getFile(filename);
+    if (!file) return;
+
+    const rootSplit = this.app.workspace.rootSplit;
+    const oldCenterPath = this.plugin.networkGraph.centerNote?.path;
+    let targetLeaf: WorkspaceLeaf | null = null;
+
+    // 1. Se om forrige senter-fil allerede er åpen i hovedområdet (rootSplit)
+    if (oldCenterPath) {
+      this.app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
+        if (
+          leaf.getRoot() === rootSplit &&
+          leaf.view instanceof FileView &&
+          leaf.view.file?.path === oldCenterPath
+        ) {
+          targetLeaf = leaf;
+        }
+      });
+    }
+
+    // 2. Hvis ikke, finn den sist brukte markdown- eller tomme fanen i hovedområdet (rootSplit)
     if (!targetLeaf) {
-      targetLeaf = this.app.workspace.getLeaf('split', 'vertical');
+      this.app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
+        if (
+          !targetLeaf &&
+          leaf.getRoot() === rootSplit &&
+          ['markdown', 'empty'].includes(leaf.view.getViewType())
+        ) {
+          targetLeaf = leaf;
+        }
+      });
+    }
+
+    // 3. Hvis hovedområdet ikke har noen åpen fane, opprett en ny fane i hovedområdet
+    if (!targetLeaf) {
+      targetLeaf = this.app.workspace.getLeaf('tab');
     }
 
     await targetLeaf.openFile(file);
     await this.app.workspace.revealLeaf(targetLeaf);
-    
-    const leaves: WorkspaceLeaf[] = this.app.workspace.getLeavesOfType(RV.VIEW_TYPE);
-    const firstLeaf: WorkspaceLeaf | undefined = leaves[0];
-    if (firstLeaf !== undefined) {
-      await this.app.workspace.revealLeaf(firstLeaf);
-      this.app.workspace.setActiveLeaf(firstLeaf);
+
+    // 4. Hold grafen synlig i sidepanelet hvis grafen ligger i et sidepanel (utenfor rootSplit)
+    const graphLeaves: WorkspaceLeaf[] = this.app.workspace.getLeavesOfType(RV.VIEW_TYPE);
+    const graphLeaf: WorkspaceLeaf | undefined = graphLeaves[0];
+    if (graphLeaf && graphLeaf.getRoot() !== rootSplit) {
+      await this.app.workspace.revealLeaf(graphLeaf);
     }
   }
+
 
   /**
    * Extracts the most recently focused active markdown document instance from workspace layout maps.

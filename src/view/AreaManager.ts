@@ -33,7 +33,6 @@ export class AreaManager {
   private nodeElByPath = new Map<string, HTMLElement>();
   
   private delegatedHandlersBound = false;
-  private boundClickHandler: ((event: MouseEvent) => void) | null = null;
   private readonly cornerEpsilon = 6;
 
   constructor(graph: NetworkGraph, parentEl: HTMLElement, plugin: MyBrainPlugin) {
@@ -53,12 +52,10 @@ export class AreaManager {
     this.containerEl.addClass(RV.CONTAINER);
     
     const res = this.toggleManager.setup(this.delegatedHandlersBound);
-    this.boundClickHandler = res.handler;
     this.delegatedHandlersBound = res.bound;
     
     this.hoverManager.setup();
 
-    // Erstatt resize-hacks med ResizeObserver + macOS dvale-beskyttelse
     this.resizeObserver?.disconnect();
     this.resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -75,6 +72,14 @@ export class AreaManager {
       }
     });
     this.resizeObserver.observe(this.containerEl);
+
+    // Fanger scroll i alle kvadranter (capture: true fordi scroll-events ikke bobler)
+    this.plugin.registerDomEvent(
+      this.containerEl,
+      "scroll",
+      () => this.requestRedraw(),
+      { capture: true, passive: true }
+    );
   }
 
   public destroy() {
@@ -156,6 +161,7 @@ export class AreaManager {
 
     // 2. Render Left Quad
     const cleanFriendsOnly = Array.from(centerNote.relations.friends).filter(n => n.relation === "friend");
+    this.containerEl.toggleClass("rv-no-left", cleanFriendsOnly.length === 0);
     this.renderQuadrant(this.left, [this.graph.getSortedNotesForQuadrant(cleanFriendsOnly, false)], "left");
 
     // 3. Render Lower Quad
@@ -170,9 +176,7 @@ export class AreaManager {
     this.renderQuadrant(this.right, [siblings, undefinedSiblings].filter(c => c.length > 0), "right");
 
     this.containerEl.appendChild(fragment);
-    this.setupScrollEventListeners();
     
-    // CSS Grid har allerede plassert alt stabilt – tegn linjene umiddelbart
     this.drawAllGraphLines(); 
   }
 
@@ -194,8 +198,47 @@ export class AreaManager {
     
       const tagGroupedNotes = this.graph.groupByFirstTag(collection);
       this.renderGroupCollection(colWrapDiv, tagGroupedNotes, noteCount);
+
+      // Bygg ekte vertikale flex-kolonner for upper og left (ingen CSS columns)
+      if (areaName === "upper" || areaName === "left") {
+        const colCount = collection.length > 6 ? 2 : 1;
+        this.distributeItemsIntoFlexColumns(colWrapDiv, colCount);
+      }
     });
     area.appendChild(areaFragment);
+  }
+
+  private distributeItemsIntoFlexColumns(colWrapDiv: HTMLElement, colCount: number): void {
+    const items = Array.from(colWrapDiv.querySelectorAll<HTMLElement>('.item'));
+    if (items.length === 0 || colCount < 1) return;
+
+    const cols: HTMLElement[] = [];
+    for (let i = 0; i < colCount; i++) {
+      cols.push(colWrapDiv.createDiv({ cls: 'rv-flex-col' }));
+    }
+
+    const firstCol = cols[0];
+    const lastCol = cols[cols.length - 1];
+    if (!firstCol || !lastCol) return;
+
+    const visibleItems = items.filter((el: HTMLElement) => !el.classList.contains('hidden'));
+    const hiddenItems = items.filter((el: HTMLElement) => el.classList.contains('hidden'));
+    const perCol = Math.max(1, Math.ceil(visibleItems.length / colCount));
+
+    visibleItems.forEach((item: HTMLElement, idx: number) => {
+      const colIndex = Math.min(Math.floor(idx / perCol), colCount - 1);
+      const targetCol = cols[colIndex] ?? firstCol;
+      targetCol.appendChild(item);
+    });
+
+    hiddenItems.forEach((item: HTMLElement) => {
+      const prevParent = item.previousElementSibling?.parentElement;
+      if (prevParent && prevParent.classList.contains('rv-flex-col')) {
+        prevParent.appendChild(item);
+      } else {
+        lastCol.appendChild(item);
+      }
+    });
   }
 
   private renderGroupCollection(targetContainer: HTMLElement, groupedData: { tag: string; notes: Node[] }[], totalNoteCount: number) {
@@ -305,13 +348,6 @@ export class AreaManager {
     for (const [key, link] of this.linkCache.entries()) {
       if (!link.used) { link.svgElement.remove(); this.linkCache.delete(key); }
     }
-  }
-
-  private setupScrollEventListeners() {
-    [this.upper, this.lower, this.left, this.right].forEach(area => {
-      const sw = area?.querySelector(`.${RV.COLLECTION_WRAPPER}`) as HTMLElement;
-      if (sw) this.plugin.registerDomEvent(sw, 'scroll', () => this.requestRedraw(), { passive: true });
-    });
   }
 
   private getLandingNodeColor(note: Node, colorful: boolean): string | null {

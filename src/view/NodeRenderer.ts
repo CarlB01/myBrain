@@ -59,9 +59,11 @@ export class NodeRenderer {
 
     node.friendGate.direction = node.assignedArea === "left" ? "right" : "left";
     
-    node.upperGate.areaElement = targetContainer;
-    node.lowerGate.areaElement = targetContainer;
-    node.friendGate.areaElement = targetContainer;
+    const boundsEl: HTMLElement = (targetContainer.closest(`.${RV.COLLECTION_WRAPPER}`) as HTMLElement | null) ?? targetContainer;
+
+    node.upperGate.areaElement = boundsEl;
+    node.lowerGate.areaElement = boundsEl;
+    node.friendGate.areaElement = boundsEl;
 
     const topSVG: SVGSVGElement = node.upperGate.render();
     const bottomSVG: SVGSVGElement = node.lowerGate.render();

@@ -45,6 +45,16 @@ export class SclBridge {
 		this.app = app;
 	}
 
+	public getDebugStatus(): string {
+		const raw = this.app.plugins?.plugins?.[SCL_PLUGIN_ID] as Record<string, unknown> | undefined;
+		if (!raw) return "raw=null";
+
+		const engine = raw.flyweightEngine as Record<string, unknown> | undefined;
+		if (!engine) return `engine=undefined (keys: ${Object.keys(raw).join(",")})`;
+
+		return `method=${typeof engine.resolveBatchForExternal}`;
+	}
+
 	private getEngine(): ResuperchargedFlyweightEngineApi | null {
 		if (!this.app.plugins?.enabledPlugins.has(SCL_PLUGIN_ID)) return null;
 
