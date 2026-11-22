@@ -53,10 +53,6 @@ export default class MyBrainPlugin extends Plugin {
       name: 'Open view',
       callback: () => { void this.activateGraphView(); },
     });
-
-    this.app.workspace.onLayoutReady(() => {
-      this.activateGraphView();
-    });
   }
 
   private registerGlobalEvents(): void {

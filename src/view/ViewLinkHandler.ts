@@ -30,7 +30,7 @@ export class ViewLinkHandler {
         oldOrigin.forEach((el: HTMLElement) => el.classList.remove('is-pressed-origin'));
       }
 
-      const parentItem: HTMLElement | null = target.closest('.item') as HTMLElement | null;
+      const parentItem = target.closest('.item');
       if (parentItem !== null && Platform.isMobile) {
         parentItem.classList.add('is-pressed-origin');
       }

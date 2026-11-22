@@ -42,7 +42,7 @@ export class ViewFileResolver {
     // 5. Final fallback path: Deep scan across alias metadata schemas
     const foundByAlias: TFile | undefined = markdownFiles.find((f: TFile) => {
       const cache: CachedMetadata | null = this.app.metadataCache.getFileCache(f);
-      const frontmatterIndex: Record<string, unknown> | null = (cache?.frontmatter || null) as Record<string, unknown> | null;
+      const frontmatterIndex: Record<string, unknown> | null = cache?.frontmatter || null;
       const aliases: unknown = frontmatterIndex?.aliases;
 
       if (Array.isArray(aliases)) {

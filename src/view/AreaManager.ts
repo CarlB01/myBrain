@@ -266,8 +266,7 @@ export class AreaManager {
 
     const newCols: HTMLElement[] = [];
     for (let i = 0; i < colCount; i++) {
-      const col = document.createElement('div');
-      col.className = 'rv-flex-col';
+      const col = createDiv({ cls: 'rv-flex-col' });
       newCols.push(col);
     }
 

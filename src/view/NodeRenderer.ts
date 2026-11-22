@@ -63,7 +63,7 @@ export class NodeRenderer {
 
     node.friendGate.direction = node.assignedArea === "left" ? "right" : "left";
     
-    const boundsEl: HTMLElement = (targetContainer.closest(`.${RV.COLLECTION_WRAPPER}`) as HTMLElement | null) ?? targetContainer;
+    const boundsEl: HTMLElement = targetContainer.closest(`.${RV.COLLECTION_WRAPPER}`) ?? targetContainer;
 
     node.upperGate.areaElement = boundsEl;
     node.lowerGate.areaElement = boundsEl;

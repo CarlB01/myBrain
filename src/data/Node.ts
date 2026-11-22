@@ -1,5 +1,4 @@
 import { TFile, CachedMetadata, parseFrontMatterAliases, parseFrontMatterTags } from "obsidian";
-import { RV } from "../utils/constants.js";
 import { StringUtils } from "../utils/StringUtils.js";
 import { Anchor } from "./Anchor.js";
 import { Relation } from "./RelationClassifier.js";
@@ -118,15 +117,6 @@ export class Node {
 
     const isIgnored = StringUtils.foundPart(path, optIgnoreFragments) || 
                       StringUtils.hasAnyOf(cleanLowercaseTags, optIgnoreTags);
-
-    if (file.basename === "Hilde og Knut") {
-  console.log("[DEBUG Hilde og Knut]", {
-    rawFrontmatterTags: frontmatter?.tags,
-    parsedFmTags: parseFrontMatterTags(frontmatter),
-    cacheTags: cache.tags,
-    finalNodeTags: cleanLowercaseTags
-  });
-}
 
     return new Node(file, path, basename, displayText, nativeAliases, cleanLowercaseTags, isIgnored, frontmatter, normalizedBasename);
   }
