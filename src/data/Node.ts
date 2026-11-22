@@ -61,6 +61,12 @@ export class Node {
   public sclIconAfter: string = "";
   public sclClasses: readonly string[] = EMPTY_FROZEN_CLASSES;
 
+  public get isLooseRelation(): boolean {
+    return (
+      this.relation === "undefined" ||
+      this.relation === "undefined-sibling"
+    );
+  }
 
   constructor(
     file:TFile,
@@ -112,6 +118,15 @@ export class Node {
 
     const isIgnored = StringUtils.foundPart(path, optIgnoreFragments) || 
                       StringUtils.hasAnyOf(cleanLowercaseTags, optIgnoreTags);
+
+    if (file.basename === "Hilde og Knut") {
+  console.log("[DEBUG Hilde og Knut]", {
+    rawFrontmatterTags: frontmatter?.tags,
+    parsedFmTags: parseFrontMatterTags(frontmatter),
+    cacheTags: cache.tags,
+    finalNodeTags: cleanLowercaseTags
+  });
+}
 
     return new Node(file, path, basename, displayText, nativeAliases, cleanLowercaseTags, isIgnored, frontmatter, normalizedBasename);
   }

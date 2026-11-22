@@ -15,6 +15,10 @@ export class NodeRenderer {
       node.div = itemDiv;
     }
 
+    if (node.isLooseRelation) {
+      itemDiv.classList.add("rv-loose-relation");
+    }
+
     itemDiv.setAttribute("data-note-path", node.path);
 
     const linkWrapper: HTMLElement = itemDiv.createDiv({ cls: RV.LINKDIV });

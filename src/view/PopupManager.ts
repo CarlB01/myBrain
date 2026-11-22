@@ -70,7 +70,7 @@ export class PopupManager {
         const itemWrapper = linksContainer.createDiv({ cls: "rv-ignored-pure-item" });
         const linkEl = itemWrapper.createEl("a", { cls: `internal-link ${RV.A} rv-ignored-note-link` });
         linkEl.setAttribute("data-href", node.path);
-        linkEl.createSpan({ text: node.displayText, cls: "rv-text-span" });
+        linkEl.textContent = node.displayText;
 
         this.plugin.registerDomEvent(linkEl, "click", (e: MouseEvent) => {
           e.preventDefault(); e.stopPropagation();

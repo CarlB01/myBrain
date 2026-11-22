@@ -5,13 +5,15 @@ export class GroupToggleManager {
   private containerEl: HTMLElement;
   private boundClickHandler: ((event: MouseEvent) => void) | null = null;
   private onRequestRedraw: () => void;
+  // Kobler hver +/- knapp direkte til sin gruppe av Node-objekter
+  private groupNotesByBtn = new WeakMap<HTMLElement, Node[]>();
 
   constructor(containerEl: HTMLElement, onRequestRedraw: () => void) {
     this.containerEl = containerEl;
     this.onRequestRedraw = onRequestRedraw;
   }
 
-  public setup(delegatedHandlersBound: boolean): { handler: (e: MouseEvent) => void; bound: boolean } {
+  public setup(): { handler: (e: MouseEvent) => void; bound: boolean } {
     this.teardown();
 
     this.boundClickHandler = (event: MouseEvent) => {
@@ -47,14 +49,18 @@ export class GroupToggleManager {
     button.setAttribute("data-tag", group.tag);
     button.setAttribute('data-link-tags', group.tag);
 
+    // Lagre direkte kobling til gruppens noder
+    this.groupNotesByBtn.set(button, group.notes);
+
     return button;
   }
 
   private onPlusMinusBtnClicked(target: HTMLElement): void {
-    const groupDiv = target.closest(`.${RV.GROUPS}`) as HTMLElement;
-    if (!groupDiv) return;
+    const notes = this.groupNotesByBtn.get(target);
+    const items = notes
+      ? notes.map(n => n.div).filter((div): div is HTMLElement => Boolean(div))
+      : Array.from(target.closest(`.${RV.GROUPS}`)?.querySelectorAll<HTMLElement>('.item') ?? []);
 
-    const items = Array.from(groupDiv.querySelectorAll('.item'));
     if (items.length <= 1) return;
 
     const textContent = target.textContent || "";
@@ -63,11 +69,11 @@ export class GroupToggleManager {
     const cleanTagName = rawTag.replace(/^#/, "");
       
     if (textContent.includes(RV.PLUS)) {
-      groupDiv.addClass('expanded');
+      items.forEach(item => item.addClass('is-group-expanded'));
       items.slice(1).forEach(item => item.removeClass('hidden'));
       target.textContent = `${RV.MINUS}${cleanTagName}(${count})`;
     } else {
-      groupDiv.removeClass('expanded');
+      items.forEach(item => item.removeClass('is-group-expanded'));
       items.slice(1).forEach(item => item.addClass('hidden'));      
       target.textContent = `${RV.PLUS}${cleanTagName}(${count})`;
     }

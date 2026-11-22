@@ -70,7 +70,7 @@
 
   /* Når venstre område er helt tomt: kollaps kolonne 1 til 0px og gi all plass til midten/høyre */
   &.rv-no-left {
-    grid-template-columns: 0px minmax(6em, max-content) minmax(4em, 1fr);
+    grid-template-columns: 2em minmax(6em, max-content) minmax(4em, 1fr);
   }
 
   /* =================================================================== */
@@ -84,7 +84,6 @@
     align-self: end;
     overflow: visible;
     min-height: 0;
-    transform: translate(10%);
   }
 
   /* CENTER AREA (Row 3: Absolute layout origin axis) */
@@ -92,7 +91,6 @@
     grid-column-start: 2;
     grid-row: 3;
     width: 125%;
-    transform: translate(10%);
     justify-self: center;
     align-self: center;
     overflow: visible;
@@ -212,7 +210,7 @@
   .rv-area.left .rv-collection-wrapper  { max-height: 44cqh; }
 
   /* ----------------------------------------------------------------- */
-  /* FELLES HORISONTAL SCROLL & FADE-MASKE (LOWER + RIGHT)             */
+  /* FELLES HORISONTAL SCROLL, KOLONNER & FADE-MASKE (LOWER + RIGHT)   */
   /* ----------------------------------------------------------------- */
   :is(.rv-area.lower, .rv-area.right) {
     --fade-left: 8px;
@@ -235,19 +233,87 @@
     );
 
     .rv-collection-wrapper {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      width: 100%;
       overflow-x: auto;
       overflow-y: hidden;
       touch-action: pan-x;
       -webkit-overflow-scrolling: touch;
     }
 
-    .rv-groups {
-      display: contents;
+    /* Skjul de tomme mellom-wrapperne (items er flyttet inn i .rv-flex-col) */
+    .rv-collection {
+      display: none;
+    }
+
+    .rv-flex-col {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.1em;
+      flex-shrink: 0;
     }
 
     .item {
       box-sizing: border-box;
-      flex-shrink: 0;
+      width: 100%;
+      max-width: 100%;
+    }
+
+    /* Diskret skille mellom Kolleksjon 1 (hardkodede) og Kolleksjon 2 (løse) */
+    .item.rv-collection-start {
+      margin-top: 1.1em;
+      padding-top: 0.55em;
+      border-top: 1px dashed color-mix(in srgb, var(--text-muted) 30%, transparent);
+    }
+
+    .rv-flex-col > .item.rv-collection-start:first-child {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: none;
+    }
+  }
+
+  /* LOWER AREA - Spesifikke tilpasninger */
+  .rv-area.lower {
+    .rv-collection-wrapper {
+      justify-content: safe center;
+      max-height: 44cqh;
+      gap: 0.35em;
+      padding: 0.35em 0.5em var(--rv-lower-padding-bottom) 0.5em;
+    }
+
+    .rv-collection-wrapper.is-scrolling {
+      justify-content: flex-start;
+    }
+
+    .rv-flex-col {
+      width: clamp(5em, 22cqw, 12em);
+      max-width: clamp(5em, 22cqw, 12em);
+    }
+  }
+
+  &.rv-no-left .rv-area.lower .rv-collection-wrapper {
+    justify-content: flex-start;
+  }
+
+  /* RIGHT AREA - Spesifikke tilpasninger */
+  .rv-area.right {
+    --fade-left: 18px;
+    --fade-right: 12px;
+
+    .rv-collection-wrapper {
+      justify-content: flex-start;
+      max-height: 46cqh;
+      gap: 0.4em;
+      padding-left: 1.2em;
+    }
+
+    .rv-flex-col {
+      width: clamp(4.5em, 24cqw, 11em);
+      max-width: clamp(4.5em, 24cqw, 11em);
     }
   }
 
@@ -261,28 +327,49 @@
   }
 
 
-  /* ----------------------------------------------------------------- */
-  /* NEDRE OMRÅDE (LOWER) - Spesifikke tilpasninger                    */
+    /* ----------------------------------------------------------------- */
+  /* LOWER AREA - 1 -> 2 -> 3 -> 4 sentrerte flex-kolonner   */
   /* ----------------------------------------------------------------- */
   .rv-area.lower {
     .rv-collection-wrapper {
-      flex-direction: column;
-      flex-wrap: wrap;
-      align-content: flex-start;
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      justify-content: safe center; /* Sentrerer 1–4 kolonner horisontalt */
       max-height: 44cqh;
-      gap: 0.1em 0.35em;
+      width: 100%;
+      gap: 0.35em;
       padding: 0.35em 0.5em var(--rv-lower-padding-bottom) 0.5em;
     }
 
-    .rv-collection,
-    .rv-columns-wrapper {
-      display: contents;
+    /* Når det er 25+ items: venstrejuster så første kolonne ikke klippes ved scroll */
+    .rv-collection-wrapper.is-scrolling {
+      justify-content: flex-start;
+    }
+    
+    /* Skjul de tomme mellom-wrapperne (items er flyttet inn i .rv-flex-col) */
+    .rv-collection {
+      display: none;
+    }
+
+    .rv-flex-col {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.1em;
+      width: clamp(5em, 22cqw, 12em);
+      max-width: clamp(5em, 22cqw, 12em);
+      flex-shrink: 0;
     }
 
     .item {
-      width: clamp(5em, 22cqw, 12em);
-      max-width: clamp(5em, 22cqw, 12em);
+      width: 100%;
+      max-width: 100%;
     }
+  }
+
+  &.rv-no-left .rv-area.lower .rv-collection-wrapper {
+    justify-content: flex-start;
   }
 
   /* ----------------------------------------------------------------- */
@@ -352,12 +439,6 @@
   .rv-area.center .rv-columns-wrapper {
     padding-right: 1.4em; /* enough space for the info btn */
   } 
-  .rv-columns-wrapper.rv-single-item-group {
-    column-count: 1;
-  }
-  .rv-columns-wrapper.rv-2-6-items-group {
-    column-count: 2;
-  }
 
   /* =================================================================== */
   /* UPPER & LEFT: Ekte vertikale flex-kolonner med automatisk 1-kolonne fallback */
@@ -446,7 +527,10 @@
   /* Når et kort er først i en gruppe: stable +/- knapp og lenke vertikalt */
   .item.rv-first-in-group {
     flex-direction: column;
-    margin-top: 1.38em;
+    margin-top: 0.25em;
+  }
+  .rv-flex-col > .item.rv-first-in-group:first-child {
+     margin-top: 0; 
   }
 
   .item.hidden {
@@ -475,19 +559,28 @@
     overflow: visible;
   }
 
-  /* Expanded header group background highlight backing layout modifiers */
-  .rv-groups.expanded .rv-linkdiv {
-    background: rgba(183, 183, 183, 0.15);
-    box-shadow: inset 0 0 0.38em rgba(0, 0, 0, 0.05);
+  /* 1. LØS RELASJON (Ytre stiplet ramme utenfor selve noden og eventuelle SCL-borders) */
+  .item.rv-loose-relation .rv-node-link {
+    outline: 2.5px dashed color-mix(in srgb, currentColor 55%, transparent);
+    outline-offset: 1px;
   }
 
-  /* INTEGRATED WRAPPER SAFEGUARD: Enforces structure on the node frame inside the first group block */
+  /* 2. UTVIDET GRUPPE (Bakgrunnsmarkering for ekspanderte grupper) */
+  :is(.rv-groups.expanded, .item.is-group-expanded) .rv-linkdiv {
+    background: rgba(183, 183, 183, 0.15);
+    box-shadow: inset 0 0 0.38em rgba(0, 0, 0, 0.05);
+    border-radius: 0.5em;
+  }
+
+  /* INTEGRATED WRAPPER SAFEGUARD */
   .item.rv-first-in-group .rv-linkdiv {
     width: fit-content;
     max-width: 100%;
     break-inside: avoid;
     break-before: avoid;
   }
+
+
 }
 
 /* =================================================================== */
@@ -552,11 +645,6 @@
   .item.is-hover-neighbor .rv-node-link,
   .item.is-pressed-origin .rv-node-link { 
     box-shadow: var(--rv-link-box-shadow);
-  }
-
-  .rv-text-span {
-    display: inline; 
-    pointer-events: none;
   }
 }
 
@@ -900,3 +988,7 @@
     line-height: 1.5;
   }
 }
+
+.rv-link-path.is-loose-link {
+    stroke-dasharray: 4 4;
+  }

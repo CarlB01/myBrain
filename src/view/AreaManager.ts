@@ -32,7 +32,6 @@ export class AreaManager {
 
   private nodeElByPath = new Map<string, HTMLElement>();
   
-  private delegatedHandlersBound = false;
   private readonly cornerEpsilon = 6;
 
   constructor(graph: NetworkGraph, parentEl: HTMLElement, plugin: MyBrainPlugin) {
@@ -40,7 +39,12 @@ export class AreaManager {
     this.containerEl = parentEl;
     this.plugin = plugin;
 
-    this.toggleManager = new GroupToggleManager(this.containerEl, this.requestRedraw.bind(this));
+    this.toggleManager = new GroupToggleManager(this.containerEl, () => {
+      this.reflowHorizontalArea(this.lower, true);
+      this.reflowHorizontalArea(this.right, false);
+      this.requestRedraw();
+    });
+
     this.popupManager = new PopupManager(this.containerEl, this.plugin);
     this.hoverManager = new HoverHighlightManager(this.containerEl, this.linkCache, this.nodeElByPath);
 
@@ -51,9 +55,7 @@ export class AreaManager {
   public initiate() {
     this.containerEl.addClass(RV.CONTAINER);
     
-    const res = this.toggleManager.setup(this.delegatedHandlersBound);
-    this.delegatedHandlersBound = res.bound;
-    
+    this.toggleManager.setup();
     this.hoverManager.setup();
 
     this.resizeObserver?.disconnect();
@@ -188,24 +190,29 @@ export class AreaManager {
     const areaFragment = createFragment();
     const collectionWrapper = areaFragment.createDiv(RV.COLLECTION_WRAPPER);
 
-    collections.forEach(collection => {
+    collections.forEach((collection, collectionIdx) => {
       if (collection.length === 0) return;
       const areaCollectionDiv = collectionWrapper.createDiv({ cls: RV.COLLECTION });
       const colWrapDiv = areaCollectionDiv.createDiv({ cls: RV.COL_WRAPPER });
-      
-      if (collection.length >= 2 && collection.length <= 6) colWrapDiv.addClass('rv-2-6-items-group');
-      if (collection.length === 1) colWrapDiv.addClass('rv-single-item-group');
-    
+          
       const tagGroupedNotes = this.graph.groupByFirstTag(collection);
       this.renderGroupCollection(colWrapDiv, tagGroupedNotes, noteCount);
 
-      // Bygg ekte vertikale flex-kolonner for upper og left (ingen CSS columns)
+      if (collectionIdx > 0) {
+        const firstItemInCollection = colWrapDiv.querySelector<HTMLElement>('.item');
+        if (firstItemInCollection) firstItemInCollection.addClass('rv-collection-start');
+      }
+
       if (areaName === "upper" || areaName === "left") {
         const colCount = collection.length > 6 ? 2 : 1;
         this.distributeItemsIntoFlexColumns(colWrapDiv, colCount);
       }
     });
+    
     area.appendChild(areaFragment);
+
+    if (areaName === "lower") this.reflowHorizontalArea(this.lower, true);
+    if (areaName === "right") this.reflowHorizontalArea(this.right, false);
   }
 
   private distributeItemsIntoFlexColumns(colWrapDiv: HTMLElement, colCount: number): void {
@@ -239,6 +246,55 @@ export class AreaManager {
         lastCol.appendChild(item);
       }
     });
+  }
+
+  public reflowHorizontalArea(areaEl: HTMLElement | undefined, isLower: boolean): void {
+    const collectionWrapper = areaEl?.querySelector<HTMLElement>(`.${RV.COLLECTION_WRAPPER}`);
+    if (!collectionWrapper) return;
+
+    const allItems = Array.from(collectionWrapper.querySelectorAll<HTMLElement>('.item'));
+    if (allItems.length === 0) return;
+
+    const visibleCount = allItems.filter(el => !el.classList.contains('hidden')).length;
+    const colCount = isLower
+      ? this.getLowerColumnCount(visibleCount)
+      : Math.max(1, Math.ceil(visibleCount / 5));
+
+    if (isLower) {
+      collectionWrapper.toggleClass('is-scrolling', visibleCount > 24);
+    }
+
+    const newCols: HTMLElement[] = [];
+    for (let i = 0; i < colCount; i++) {
+      const col = document.createElement('div');
+      col.className = 'rv-flex-col';
+      newCols.push(col);
+    }
+
+    const firstCol = newCols[0]!;
+    const perCol = Math.max(1, Math.ceil(visibleCount / colCount));
+    let visibleIdx = 0;
+    let currentCol: HTMLElement = firstCol;
+
+    for (const item of allItems) {
+      if (!item.classList.contains('hidden')) {
+        const colIndex = Math.min(Math.floor(visibleIdx / perCol), colCount - 1);
+        currentCol = newCols[colIndex] ?? firstCol;
+        visibleIdx++;
+      }
+      currentCol.appendChild(item);
+    }
+
+    collectionWrapper.querySelectorAll('.rv-flex-col').forEach(col => col.remove());
+    newCols.forEach(col => collectionWrapper.appendChild(col));
+  }
+
+  private getLowerColumnCount(count: number): number {
+    if (count <= 1) return 1;
+    if (count <= 6) return 2;
+    if (count <= 12) return 3;
+    if (count <= 24) return 4;
+    return Math.ceil(count / 6);
   }
 
   private renderGroupCollection(targetContainer: HTMLElement, groupedData: { tag: string; notes: Node[] }[], totalNoteCount: number) {
@@ -318,10 +374,12 @@ export class AreaManager {
       for (let j = i + 1; j < visibleNotes.length; j++) {
         const nodeB = visibleNotes[j]; if (!nodeB) continue;
 
+        const isLoose = nodeA.isLooseRelation || nodeB.isLooseRelation;
+
         // RULE 1: A -> B (child)
         if (nodeA.relations.children.has(nodeB) || nodeB.relations.parents.has(nodeA)) {
           if (canDraw(nodeA.lowerGate, nodeB.upperGate)) {
-            const sc = getColor(nodeB); DrawingUtils.drawLink(nodeA.lowerGate, nodeB.upperGate, links, offBy, canvas, sc);
+            const sc = getColor(nodeB); DrawingUtils.drawLink(nodeA.lowerGate, nodeB.upperGate, links, offBy, canvas, sc, isLoose);
             nodeA.lowerGate.svg!.classList.add('is-connected'); nodeB.upperGate.svg!.classList.add('is-connected');
             this.applyGateColor(nodeB.upperGate, colorful ? sc : null);
           }
@@ -329,7 +387,7 @@ export class AreaManager {
         // RULE 2: B -> A (child)
         else if (nodeB.relations.children.has(nodeA) || nodeA.relations.parents.has(nodeB)) {
           if (canDraw(nodeB.lowerGate, nodeA.upperGate)) {
-            const sc = getColor(nodeA); DrawingUtils.drawLink(nodeB.lowerGate, nodeA.upperGate, links, offBy, canvas, sc);
+            const sc = getColor(nodeA); DrawingUtils.drawLink(nodeB.lowerGate, nodeA.upperGate, links, offBy, canvas, sc, isLoose);
             nodeB.lowerGate.svg!.classList.add('is-connected'); nodeA.upperGate.svg!.classList.add('is-connected');
             this.applyGateColor(nodeA.upperGate, colorful ? sc : null);
           }
@@ -337,7 +395,7 @@ export class AreaManager {
         // RULE 3: friend
         else if (nodeA.relations.friends.has(nodeB) || nodeB.relations.friends.has(nodeA)) {
           if (canDraw(nodeA.friendGate, nodeB.friendGate)) {
-            const sc = getColor(nodeB); DrawingUtils.drawLink(nodeA.friendGate, nodeB.friendGate, links, offBy, canvas, sc);
+            const sc = getColor(nodeB); DrawingUtils.drawLink(nodeA.friendGate, nodeB.friendGate, links, offBy, canvas, sc, isLoose);
             nodeA.friendGate.svg!.classList.add('is-connected'); nodeB.friendGate.svg!.classList.add('is-connected');
             this.applyGateColor(nodeB.friendGate, colorful ? sc : null);
           }
@@ -350,17 +408,10 @@ export class AreaManager {
     }
   }
 
-  private getLandingNodeColor(note: Node, colorful: boolean): string | null {
-    if (!colorful) return null;
-    if (note.sclColor.length > 0) return note.sclColor;
-
-    if (!note.div) return null;
-    const linkEl = note.div.querySelector<HTMLElement>(".data-link-text");
-    if (!linkEl) return null;
-
-    const inlineColor = linkEl.style.getPropertyValue("--scl-color") || linkEl.style.color;
-    return inlineColor.trim().length > 0 ? inlineColor : null;
-  }
+private getLandingNodeColor(note: Node, colorful: boolean): string | null {
+  if (!colorful || note.sclColor.length === 0) return null;
+  return note.sclColor;
+}
 
   private applyGateColor(gate: Gate, color: string | null): void {
     const circle = gate.svg?.querySelector("circle") as SVGCircleElement | null;

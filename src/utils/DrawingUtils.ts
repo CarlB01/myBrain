@@ -57,7 +57,8 @@ export class DrawingUtils {
       linkCache: Map<string, { svgElement: SVGPathElement; used: boolean }>,
       offBy: Point,
       svgContainer: SVGSVGElement,
-      strokeColor: string | null = null
+      strokeColor: string | null = null,
+      isLoose: boolean = false
   ) {
     // 1. VIEWPORT GUTTER CHECK: Intercept paths if gates have scrolled outside active view segments
     const rawP1 = fromGate.center();
@@ -124,6 +125,7 @@ export class DrawingUtils {
 
     // 5. DOM HYDRATION: Commit the string trajectory parameter down to the target path node
     pathEl.setAttribute("d", dAttribute);
+    pathEl.toggleClass("is-loose-link", isLoose);
 
     // 6. Optional per-link color override (falls back to CSS when null)
     if (strokeColor && strokeColor.trim().length > 0) {
