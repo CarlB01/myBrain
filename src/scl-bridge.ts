@@ -1,29 +1,36 @@
+// myBrain: src/scl-bridge.ts
+
 import { App, TFile } from "obsidian";
 
-export interface ExternalNodeStyleFlyweight {
+export interface SclPresentationPool {
 	readonly hasMatch: boolean;
 	readonly signature: string;
 	readonly color: string;
 	readonly backgroundColor: string;
-	readonly iconBefore: string;
-	readonly iconAfter: string;
+	readonly classesCount: number;
+	readonly stylesCount: number;
 	readonly classes: readonly string[];
-	readonly tags: readonly string[];
+	readonly styleKeys: readonly string[];
+	readonly styleValues: readonly string[];
 }
 
 interface ResuperchargedFlyweightEngineApi {
-	resolveBatchForExternal(
-		files: readonly TFile[],
+	prepareLinkPresentation(file: TFile, visibleText: string): SclPresentationPool;
+	prepareBatchForExternal<T>(
+		items: Iterable<T>,
+		getFile: (item: T) => TFile,
+		getVisibleText: (item: T) => string,
+		onItemPrepared: (item: T, pool: SclPresentationPool) => void,
 		budgetMs?: number
-	): Promise<Map<string, ExternalNodeStyleFlyweight>>;
+	): Promise<void>;
 }
 
 interface ResuperchargedPluginApi {
 	readonly flyweightEngine: ResuperchargedFlyweightEngineApi;
+	applyPoolToLink?(link: HTMLElement, pool: SclPresentationPool): void;
 }
 
 const SCL_PLUGIN_ID = "re-supercharged-links";
-const EMPTY_STYLE_MAP: Map<string, ExternalNodeStyleFlyweight> = new Map();
 
 function isResuperchargedPlugin(candidate: unknown): candidate is ResuperchargedPluginApi {
 	if (typeof candidate !== "object" || candidate === null) return false;
@@ -33,50 +40,90 @@ function isResuperchargedPlugin(candidate: unknown): candidate is Resupercharged
 	if (typeof engine !== "object" || engine === null) return false;
 
 	return (
-		"resolveBatchForExternal" in engine &&
-		typeof (engine as { readonly resolveBatchForExternal: unknown }).resolveBatchForExternal === "function"
+		"prepareBatchForExternal" in engine &&
+		typeof (engine as { readonly prepareBatchForExternal: unknown }).prepareBatchForExternal === "function" &&
+		"prepareLinkPresentation" in engine &&
+		typeof (engine as { readonly prepareLinkPresentation: unknown }).prepareLinkPresentation === "function"
 	);
 }
-
 export class SclBridge {
 	private readonly app: App;
+	private cachedPlugin: ResuperchargedPluginApi | null = null;
 
 	constructor(app: App) {
 		this.app = app;
 	}
 
-	public getDebugStatus(): string {
-		const raw = this.app.plugins?.plugins?.[SCL_PLUGIN_ID] as Record<string, unknown> | undefined;
-		if (!raw) return "raw=null";
-
-		const engine = raw.flyweightEngine as Record<string, unknown> | undefined;
-		if (!engine) return `engine=undefined (keys: ${Object.keys(raw).join(",")})`;
-
-		return `method=${typeof engine.resolveBatchForExternal}`;
+	public clear(): void {
+		this.cachedPlugin = null;
 	}
 
-	private getEngine(): ResuperchargedFlyweightEngineApi | null {
-		if (!this.app.plugins?.enabledPlugins.has(SCL_PLUGIN_ID)) return null;
+	private getPlugin(): ResuperchargedPluginApi | null {
+		if (!this.app.plugins?.enabledPlugins.has(SCL_PLUGIN_ID)) {
+			this.cachedPlugin = null;
+			return null;
+		}
+
+		if (this.cachedPlugin !== null) {
+			return this.cachedPlugin;
+		}
 
 		const rawPlugin: unknown = this.app.plugins.plugins[SCL_PLUGIN_ID] ?? null;
 		if (!isResuperchargedPlugin(rawPlugin)) return null;
 
-		return rawPlugin.flyweightEngine;
+		this.cachedPlugin = rawPlugin;
+		return rawPlugin;
 	}
-
+	
 	public isAvailable(): boolean {
-		return this.getEngine() !== null;
+		return this.getPlugin() !== null;
 	}
 
-	public async resolveBatch(
-		files: readonly TFile[],
+	/**
+	 * Varmer opp SCL-cachen og fyller ut node-felter direkte via SHARED_PRESENTATION_POOL
+	 * innenfor et tidsbudsjett på `budgetMs` per frame (0 heap-allokering).
+	 */
+	public async prepareBatch<T>(
+		items: Iterable<T>,
+		getFile: (item: T) => TFile,
+		getVisibleText: (item: T) => string,
+		onItemPrepared: (item: T, pool: SclPresentationPool) => void,
 		budgetMs = 5
-	): Promise<Map<string, ExternalNodeStyleFlyweight>> {
-		if (files.length === 0) return EMPTY_STYLE_MAP;
+	): Promise<void> {
+		const plugin = this.getPlugin();
+		if (plugin === null) return;
 
-		const engine = this.getEngine();
-		if (engine === null) return EMPTY_STYLE_MAP;
+		await plugin.flyweightEngine.prepareBatchForExternal(
+			items,
+			getFile,
+			getVisibleText,
+			onItemPrepared,
+			budgetMs
+		);
+	}
 
-		return engine.resolveBatchForExternal(files, budgetMs);
+	/**
+	 * Påfører ferdig populert pool direkte på et HTML-element og merker det med
+	 * "scl-processed" + "data-scl-signature" så Re-Supercharged Links skipper det senere.
+	 */
+	public applyPoolToLink(linkEl: HTMLElement, pool: SclPresentationPool): void {
+		const plugin = this.getPlugin();
+		if (plugin?.applyPoolToLink) {
+			plugin.applyPoolToLink(linkEl, pool);
+		}
+	}
+
+	/**
+	 * On-demand styling når MyBrain oppretter et DOM-element etter at batchen har kjørt.
+	 * Bruker den allerede oppvarmede cachen (~1–2 µs) og stempler elementet som ferdig.
+	 */
+	public styleLinkElement(linkEl: HTMLElement, file: TFile, visibleText: string): void {
+		const plugin = this.getPlugin();
+		if (plugin === null) return;
+
+		const pool = plugin.flyweightEngine.prepareLinkPresentation(file, visibleText);
+		if (plugin.applyPoolToLink) {
+			plugin.applyPoolToLink(linkEl, pool);
+		}
 	}
 }

@@ -52,13 +52,9 @@ export class Node {
   };
 
   // Monomorfe Flyweight-felter (initialiseres med faste typer i constructor for V8)
-  public sclHasMatch: boolean = false;
   public sclSignature: string = "";
   public sclColor: string = "";
   public sclBgColor: string = "";
-  public sclIconBefore: string = "";
-  public sclIconAfter: string = "";
-  public sclClasses: readonly string[] = EMPTY_FROZEN_CLASSES;
 
   public get isLooseRelation(): boolean {
     return (

@@ -4,10 +4,12 @@ import { MyBrainView } from './view/view.js';
 import { RV } from './utils/constants.js';
 import { SettingsManager } from './SettingsManager.js';
 import { NetworkGraph } from './data/NetworkGraph.js';
+import { SclBridge } from './scl-bridge.js';
 
 export default class MyBrainPlugin extends Plugin {
   declare settings: SettingsManager;
   public networkGraph!: NetworkGraph;
+  public sclBridge!: SclBridge;
 
   private appPaused: boolean = false;
   private resumedAt: number = 0;
@@ -32,8 +34,9 @@ export default class MyBrainPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    this.sclBridge = new SclBridge(this.app)
     this.networkGraph = new NetworkGraph(this, this.settings);
-
+    
     this.addSettingTab(new SettingTab(this.app, this));
   
     this.registerView(
@@ -232,6 +235,7 @@ export default class MyBrainPlugin extends Plugin {
       }
     });
     if (this.networkGraph) this.networkGraph.cancel(); 
+    this.sclBridge?.clear();
   }
 
   async loadSettings(): Promise<void> {

@@ -1,8 +1,14 @@
 import { Node } from "../data/Node.js";
+import { SclBridge } from "../scl-bridge.js";
 import { RV } from "../utils/constants.js";
 
 export class NodeRenderer {
-  public static renderNodeElement(node: Node, targetContainer: HTMLElement, isCenter: boolean): HTMLElement {
+  public static renderNodeElement(
+    node: Node, 
+    targetContainer: HTMLElement, 
+    isCenter: boolean,
+    sclBridge: SclBridge
+  ): HTMLElement {
     node.assignedArea = isCenter ? "center" : node.assignedArea;
     
     let itemDiv: HTMLElement | null = node.div;
@@ -36,30 +42,7 @@ export class NodeRenderer {
     });
 
     linkEl.textContent = node.displayText;
-
-    // V8 FLYWEIGHT INJECTION: Stemple elementet ferdig i minnet før DOM-montering
-    if (node.sclHasMatch) {
-      linkEl.classList.add("scl-processed");
-      const classes = node.sclClasses;
-      for (let i = 0; i < classes.length; i++) {
-        const cls = classes[i];
-        if (cls !== undefined && cls.length > 0) linkEl.classList.add(cls);
-      }
-      linkEl.setAttribute("data-scl-signature", node.sclSignature);
-
-      if (node.sclColor.length > 0) {
-        linkEl.style.setProperty("--scl-color", node.sclColor);
-      }
-      if (node.sclBgColor.length > 0 && node.sclBgColor !== "transparent") {
-        linkEl.style.setProperty("--scl-bg", node.sclBgColor);
-      }
-      if (node.sclIconBefore.length > 0) {
-        linkEl.style.setProperty("--scl-icon-before", `"${node.sclIconBefore}"`);
-      }
-      if (node.sclIconAfter.length > 0) {
-        linkEl.style.setProperty("--scl-icon-after", `"${node.sclIconAfter}"`);
-      }
-    }
+    sclBridge.styleLinkElement(linkEl, node.file, node.displayText);
 
     node.friendGate.direction = node.assignedArea === "left" ? "right" : "left";
     

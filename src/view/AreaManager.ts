@@ -11,6 +11,7 @@ import { PopupManager } from "./PopupManager.js";
 import { HoverHighlightManager } from "./HoverHighlightManager.js";
 import { NetworkGraph } from "../data/NetworkGraph.js";
 import { Gate } from "../data/Gate.js";
+import { SclBridge } from "../scl-bridge.js";
 
 export class AreaManager {
   containerEl: HTMLElement;
@@ -302,7 +303,7 @@ export class AreaManager {
       const overGrensen = group.notes.length > 4 && totalNoteCount > 20;
 
       group.notes.forEach((node, index) => {
-        const noteEl = NodeRenderer.renderNodeElement(node, targetContainer, this.center === targetContainer);
+        const noteEl = NodeRenderer.renderNodeElement(node, targetContainer, this.center === targetContainer, this.plugin.sclBridge);
         if (overGrensen && index > 0 && this.plugin.settings.groupsCollapsed) noteEl.classList.add('hidden');
         groupDiv.appendChild(noteEl);
         if (node.div) this.nodeElByPath.set(node.path, node.div);
@@ -407,10 +408,10 @@ export class AreaManager {
     }
   }
 
-private getLandingNodeColor(note: Node, colorful: boolean): string | null {
-  if (!colorful || note.sclColor.length === 0) return null;
-  return note.sclColor;
-}
+  private getLandingNodeColor(note: Node, colorful: boolean): string | null {
+    if (!colorful || note.sclColor.length === 0) return null;
+    return note.sclColor;
+  }
 
   private applyGateColor(gate: Gate, color: string | null): void {
     const circle = gate.svg?.querySelector("circle") as SVGCircleElement | null;
