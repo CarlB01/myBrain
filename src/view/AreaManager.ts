@@ -1,3 +1,4 @@
+// src/view/AreaManager
 import { Node } from "../data/Node.js";
 import { debounce, Debouncer } from "obsidian";
 import { DrawingUtils } from "../utils/DrawingUtils.js";
@@ -5,7 +6,6 @@ import { RV } from "../utils/constants.js";
 import MyBrainPlugin from "../main.js";
 
 import { NodeRenderer } from "./NodeRenderer.js";
-import { LayoutGeometry } from "./LayoutGeometry.js";
 import { GroupToggleManager } from "./GroupToggleManager.js";
 import { PopupManager } from "./PopupManager.js";
 import { HoverHighlightManager } from "./HoverHighlightManager.js";
@@ -37,8 +37,9 @@ export class AreaManager {
   private hoverManager: HoverHighlightManager;
 
   private nodeElByPath = new Map<string, HTMLElement>();
-  
   private readonly cornerEpsilon = 6;
+  private readonly areaItemMaxBeforeCollapse = 20;
+  private readonly groupItemMaxBeforeCollapse = 4;
 
   constructor(graph: NetworkGraph, parentEl: HTMLElement, plugin: MyBrainPlugin) {
     this.graph = graph;
@@ -80,7 +81,6 @@ export class AreaManager {
 
     this.resizeObserver.observe(this.containerEl);
 
-    // Fanger scroll i alle kvadranter (capture: true fordi scroll-events ikke bobler)
     this.plugin.registerDomEvent(
       this.containerEl,
       "scroll",
@@ -147,7 +147,7 @@ export class AreaManager {
     if (this.containerEl.clientWidth === 0 || this.containerEl.clientHeight === 0) return;
 
     this.containerEl.empty();
-    this.containerEl.className = "view-content rv-container";
+    this.containerEl.className = `view-content ${RV.CONTAINER}`;
 
     const fragment = createFragment();
 
@@ -193,21 +193,10 @@ export class AreaManager {
     if (totalNoteCount === 0) return;
 
     const areaFragment = createFragment();
-    const collectionWrapper = areaFragment.createDiv({ cls: RV.COLLECTION_WRAPPER });
-    const columnHost = this.resolveColumnHost(collectionWrapper, areaName);
-
     const items = this.buildAreaItems(area, collections, totalNoteCount);
-    this.distributeItemsIntoColumns(columnHost, items, areaName);
+    this.distributeItemsIntoColumns(areaFragment, area, items, areaName);
 
     area.appendChild(areaFragment);
-  }
-
-  private resolveColumnHost(collectionWrapper: HTMLElement, areaName: QuadrantName): HTMLElement {
-    if (areaName === "lower" || areaName === "right") {
-      return collectionWrapper;
-    }
-    const collectionDiv = collectionWrapper.createDiv({ cls: RV.COLLECTION });
-    return collectionDiv.createDiv({ cls: RV.COL_WRAPPER });
   }
 
   private buildAreaItems(area: HTMLElement, collections: Node[][], totalNoteCount: number): HTMLElement[] {
@@ -221,18 +210,18 @@ export class AreaManager {
       let isFirstInCollection = true;
 
       for (const group of groupedData) {
-        const isCollapsible = group.notes.length > 4 && totalNoteCount > 20;
+        const isCollapsible = group.notes.length > this.groupItemMaxBeforeCollapse && totalNoteCount > this.areaItemMaxBeforeCollapse;
 
         group.notes.forEach((node, index) => {
           const noteEl = NodeRenderer.renderNodeElement(node, area, isCenter, this.plugin.sclBridge);
 
           if (collectionIdx > 0 && isFirstInCollection) {
-            noteEl.addClass("rv-collection-start");
+            noteEl.addClass(RV.COLLECTION_START);
             isFirstInCollection = false;
           }
 
           if (isCollapsible && index > 0 && this.plugin.settings.groupsCollapsed) {
-            noteEl.classList.add("hidden");
+            noteEl.addClass("hidden");
           }
 
           if (node.div) {
@@ -245,7 +234,7 @@ export class AreaManager {
         if (isCollapsible) {
           const firstDiv = group.notes[0]?.div;
           if (firstDiv) {
-            firstDiv.classList.add("rv-first-in-group");
+            firstDiv.addClass(RV.FIRST_IN_GROUP);
             firstDiv.prepend(this.toggleManager.buildPlusMinusBtn(firstDiv, group, true));
           }
         }
@@ -256,30 +245,41 @@ export class AreaManager {
   }
   
   public reflowArea(areaEl: HTMLElement, areaName: QuadrantName): void {
-    const collectionWrapper = areaEl.querySelector<HTMLElement>(`.${RV.COLLECTION_WRAPPER}`);
-    if (!collectionWrapper) return;
-
-    const columnHost = areaName === "lower" || areaName === "right"
-      ? collectionWrapper
-      : collectionWrapper.querySelector<HTMLElement>(`.${RV.COL_WRAPPER}`) ?? collectionWrapper;
-
-    const items = Array.from(columnHost.querySelectorAll<HTMLElement>(".item"));
+    const items = Array.from(areaEl.querySelectorAll<HTMLElement>(`.${RV.ITEM}`));
     if (items.length === 0) return;
 
-    this.distributeItemsIntoColumns(columnHost, items, areaName);
+    const fragment = createFragment();
+    this.distributeItemsIntoColumns(fragment, areaEl, items, areaName);
+    areaEl.querySelectorAll(`.${RV.COLUMNS}`).forEach(col => col.remove());
+    areaEl.appendChild(fragment);
   }
 
-  private distributeItemsIntoColumns(columnHost: HTMLElement, items: HTMLElement[], areaName: QuadrantName): void {
+  private distributeItemsIntoColumns(
+    targetHost: HTMLElement | DocumentFragment, 
+    areaEl: HTMLElement,
+    items: HTMLElement[], 
+    areaName: QuadrantName
+  ): void {
     const visibleCount = items.reduce((count, el) => count + (el.classList.contains("hidden") ? 0 : 1), 0);
     const colCount = this.getColumnCount(areaName, visibleCount);
 
+    if (areaName === "upper") {
+      this.containerEl.toggleClass("rv-upper-wide", colCount > 1);
+      areaEl.toggleClass("is-scrolling", visibleCount > 12);
+    }
+
+    if (areaName === "left") {
+      areaEl.toggleClass("is-tall", visibleCount >= 4);
+    }
+
     if (areaName === "lower") {
-      columnHost.toggleClass("is-scrolling", visibleCount > 24);
+      areaEl.toggleClass("is-single-col", colCount === 1);
+      areaEl.toggleClass("is-scrolling", visibleCount > 24);
     }
 
     const columns: HTMLElement[] = [];
     for (let i = 0; i < colCount; i++) {
-      columns.push(createDiv({ cls: "rv-flex-col" }));
+      columns.push(createDiv({ cls: RV.COLUMNS }));
     }
 
     const firstCol = columns[0];
@@ -297,10 +297,8 @@ export class AreaManager {
       }
       currentCol.appendChild(item);
     }
-
-    columnHost.querySelectorAll(".rv-flex-col").forEach(col => col.remove());
     for (const col of columns) {
-      columnHost.appendChild(col);
+      targetHost.appendChild(col);
     }
   }
 
@@ -327,43 +325,56 @@ export class AreaManager {
   private drawAllGraphLines() {
     const centerNote = this.graph.centerNote;
     if (!centerNote) return;
+
     this.nodeElByPath.clear();
-    const offBy = LayoutGeometry.offBy(this.containerEl);
+    const offBy = DrawingUtils.getContainerOffset(this.containerEl);
     if (!offBy) return;
     
-    const links = this.linkCache; const canvas = this.backContainerSVG;
+    const links = this.linkCache; 
+    const canvas = this.backContainerSVG;
     const colorful = this.plugin.settings.colorful === true;
     const colorCache = new Map<Node, string | null>();
 
     const getColor = (n: Node): string | null => {
-      if (colorCache.has(n)) return colorCache.get(n)!;
+      const cached = colorCache.get(n);
+      if (cached !== undefined) return cached;
       const c = this.getLandingNodeColor(n, colorful);
-      colorCache.set(n, c); return c;
+      colorCache.set(n, c);
+      return c;
     };
 
     const visibleNotes = Array.from(this.graph.noteCache.values()).filter(n => n.isUsed && n.assignedArea !== "ignored");
-    for (const n of visibleNotes) if (n.div) this.nodeElByPath.set(n.path, n.div);
-    for (const link of links.values()) link.used = false;
+    for (const n of visibleNotes) {
+      if (n.div) this.nodeElByPath.set(n.path, n.div);
+    }
 
-    for (const link of links.values()) link.used = false;
+    for (const link of links.values()) {
+      link.used = false;
+    }
 
     for (const note of visibleNotes) {
-      note.upperGate.svg?.classList.remove('is-connected');
-      note.lowerGate.svg?.classList.remove('is-connected');
-      note.friendGate.svg?.classList.remove('is-connected');
-      this.applyGateColor(note.upperGate, null); this.applyGateColor(note.lowerGate, null); this.applyGateColor(note.friendGate, null);
+      note.upperGate.svg?.removeClass('is-connected');
+      note.lowerGate.svg?.removeClass('is-connected');
+      note.friendGate.svg?.removeClass('is-connected');
+      this.applyGateColor(note.upperGate, null); 
+      this.applyGateColor(note.lowerGate, null); 
+      this.applyGateColor(note.friendGate, null);
     }
 
     const viewports = {
-      center: this.center?.getBoundingClientRect() ?? null, upper: this.upper?.getBoundingClientRect() ?? null,
-      lower: this.lower?.getBoundingClientRect() ?? null, left: this.left?.getBoundingClientRect() ?? null, right: this.right?.getBoundingClientRect() ?? null, ignored: null
+      center: this.center?.getBoundingClientRect() ?? null, 
+      upper: this.upper?.getBoundingClientRect() ?? null,
+      lower: this.lower?.getBoundingClientRect() ?? null, 
+      left: this.left?.getBoundingClientRect() ?? null, 
+      right: this.right?.getBoundingClientRect() ?? null, 
+      ignored: null
     };
 
-    const canDraw = (from: Gate, to: Gate) => {
+    const canDraw = (from: Gate, to: Gate): boolean => {
       if (!from?.svg || !to?.svg || !from.parentNote.div || !to.parentNote.div) return false;
       const rA = from.svg.getBoundingClientRect();
       const rB = to.svg.getBoundingClientRect();
-      if (LayoutGeometry.isBadGateRect(rA, this.cornerEpsilon) || LayoutGeometry.isBadGateRect(rB, this.cornerEpsilon)) return false;
+      if (DrawingUtils.isBadGateRect(rA, this.cornerEpsilon) || DrawingUtils.isBadGateRect(rB, this.cornerEpsilon)) return false;
 
       const vA = viewports[from.parentNote.assignedArea];
       if (vA && (rA.bottom < vA.top || rA.top > vA.bottom || rA.right < vA.left || rA.left > vA.right)) return false;
@@ -375,33 +386,42 @@ export class AreaManager {
     };
 
     for (let i = 0; i < visibleNotes.length; i++) {
-      const nodeA = visibleNotes[i]; if (!nodeA) continue;
+      const nodeA = visibleNotes[i]; 
+      if (!nodeA) continue;
+      
       for (let j = i + 1; j < visibleNotes.length; j++) {
-        const nodeB = visibleNotes[j]; if (!nodeB) continue;
+        const nodeB = visibleNotes[j]; 
+        if (!nodeB) continue;
 
         const isLoose = nodeA.isLooseRelation || nodeB.isLooseRelation;
 
         // RULE 1: A -> B (child)
         if (nodeA.relations.children.has(nodeB) || nodeB.relations.parents.has(nodeA)) {
           if (canDraw(nodeA.lowerGate, nodeB.upperGate)) {
-            const sc = getColor(nodeB); DrawingUtils.drawLink(nodeA.lowerGate, nodeB.upperGate, links, offBy, canvas, sc, isLoose);
-            nodeA.lowerGate.svg!.classList.add('is-connected'); nodeB.upperGate.svg!.classList.add('is-connected');
+            const sc = getColor(nodeB); 
+            DrawingUtils.drawLink(nodeA.lowerGate, nodeB.upperGate, links, offBy, canvas, sc, isLoose);
+            nodeA.lowerGate.svg!.addClass('is-connected'); 
+            nodeB.upperGate.svg!.addClass('is-connected');
             this.applyGateColor(nodeB.upperGate, colorful ? sc : null);
           }
         }
         // RULE 2: B -> A (child)
         else if (nodeB.relations.children.has(nodeA) || nodeA.relations.parents.has(nodeB)) {
           if (canDraw(nodeB.lowerGate, nodeA.upperGate)) {
-            const sc = getColor(nodeA); DrawingUtils.drawLink(nodeB.lowerGate, nodeA.upperGate, links, offBy, canvas, sc, isLoose);
-            nodeB.lowerGate.svg!.classList.add('is-connected'); nodeA.upperGate.svg!.classList.add('is-connected');
+            const sc = getColor(nodeA); 
+            DrawingUtils.drawLink(nodeB.lowerGate, nodeA.upperGate, links, offBy, canvas, sc, isLoose);
+            nodeB.lowerGate.svg!.addClass('is-connected'); 
+            nodeA.upperGate.svg!.addClass('is-connected');
             this.applyGateColor(nodeA.upperGate, colorful ? sc : null);
           }
         }
         // RULE 3: friend
         else if (nodeA.relations.friends.has(nodeB) || nodeB.relations.friends.has(nodeA)) {
           if (canDraw(nodeA.friendGate, nodeB.friendGate)) {
-            const sc = getColor(nodeB); DrawingUtils.drawLink(nodeA.friendGate, nodeB.friendGate, links, offBy, canvas, sc, isLoose);
-            nodeA.friendGate.svg!.classList.add('is-connected'); nodeB.friendGate.svg!.classList.add('is-connected');
+            const sc = getColor(nodeB); 
+            DrawingUtils.drawLink(nodeA.friendGate, nodeB.friendGate, links, offBy, canvas, sc, isLoose);
+            nodeA.friendGate.svg!.addClass('is-connected'); 
+            nodeB.friendGate.svg!.addClass('is-connected');
             this.applyGateColor(nodeB.friendGate, colorful ? sc : null);
           }
         }
@@ -409,7 +429,10 @@ export class AreaManager {
     }
 
     for (const [key, link] of this.linkCache.entries()) {
-      if (!link.used) { link.svgElement.remove(); this.linkCache.delete(key); }
+      if (!link.used) { 
+        link.svgElement.remove(); 
+        this.linkCache.delete(key); 
+      }
     }
   }
 

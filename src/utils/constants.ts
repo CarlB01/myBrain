@@ -9,8 +9,6 @@ export const RV = {
   // ==========================================================================
   VIEW_TYPE: 'mybrain-view',
   DISPLAY_TEXT: 'myBrain',
-  
-  // Core application visual node icon
   ICON: 'sparkle',
 
   // ==========================================================================
@@ -30,26 +28,14 @@ export const RV = {
   AREA_BOTTOM: 'rv-area lower',
   
   // ==========================================================================
-  // Tier Collections & Column Flow Wrappers
+  // Column Flow & Nodes
   // ==========================================================================
-  COLLECTION_WRAPPER: 'rv-collection-wrapper',
-  COLLECTION: 'rv-collection',
-  COL_WRAPPER: 'rv-columns-wrapper',
-  GROUPS: 'rv-groups',
-
-  // ==========================================================================
-  // Hyperlink Anatomy & Target Node Classes
-  // ==========================================================================
+  COLUMNS: 'rv-columns',
+  COLLECTION_START: 'rv-collection-start',
+  FIRST_IN_GROUP: 'rv-first-in-group',
+  ITEM: 'item',
   LINKDIV: 'rv-linkdiv',
-  
-  /* 
-   * Primary downstream tracking anchor class for myBrain active nodes.
-   */
   A: 'rv-node-link',
-  
-  /*
-   * Retained for backward parsing safety if referenced elsewhere in legacy files.
-   */
   SPAN: 'rv-text-span',
 
   // ==========================================================================
@@ -71,8 +57,6 @@ export const RV = {
   // ==========================================================================
   LEFT_TALL: 'data-left-tall',
   RIGHT_TALL: 'data-right-tall',
-
-  // Coordinates mathematical rendering factor
   FACTOR: 1,
 
   // Empty view state instructional text
@@ -81,8 +65,4 @@ export const RV = {
 
 } as const;
 
-/**
- * Explicit Type Declaration mapping the frozen constant dictionary layout.
- * Guarantees compile-time type exhaustiveness across modular file imports.
- */
 export type RVConstants = typeof RV;

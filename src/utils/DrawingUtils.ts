@@ -1,11 +1,20 @@
-import { Point } from "obsidian";
+import { Platform, Point } from "obsidian";
 import { Gate } from "../data/Gate";
+
 
 /**
  * High-performance vector rendering utility for SVG path generations.
  * Calculates mathematical control points for seamless horizontal and vertical Bezier curve mappings.
  */
 export class DrawingUtils {
+  public static getContainerOffset(containerEl: HTMLElement): Point | null {
+    const rect = containerEl.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+
+    const x = rect.left + (Platform.isMobile ? window.scrollX : containerEl.scrollLeft);
+    const y = rect.top + (Platform.isMobile ? window.scrollY : containerEl.scrollTop);
+    return { x, y };
+  }
   
   /**
    * Evaluates the relative distance vector between two point hashes (p1 - p2).
@@ -180,5 +189,13 @@ export class DrawingUtils {
     const cp2y = p2.y + (verticalStrength * dirVertB);
 
     return `M ${p1.x} ${p1.y} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+  }
+
+  public static isBadGateRect(rect: DOMRect, cornerEpsilon: number): boolean {
+    if (!rect) return true;
+    if (rect.width <= 0 || rect.height <= 0) return true;
+    if (!Number.isFinite(rect.left) || !Number.isFinite(rect.top)) return true;
+    if (rect.left <= cornerEpsilon && rect.top <= cornerEpsilon) return true;
+    return false;
   }
 }

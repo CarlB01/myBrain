@@ -5,7 +5,7 @@ import { RV } from "../utils/constants.js";
 export class NodeRenderer {
   public static renderNodeElement(
     node: Node, 
-    targetContainer: HTMLElement, 
+    areaContainer: HTMLElement, 
     isCenter: boolean,
     sclBridge: SclBridge
   ): HTMLElement {
@@ -32,7 +32,6 @@ export class NodeRenderer {
 
     const routingPath: string = node.path.endsWith(".md") ? node.path.slice(0, -3) : node.path;
 
-    // Minimalistisk Obsidian-lenke: kun internal-link + din egen fokus-klasse
     const linkEl: HTMLAnchorElement = createEl("a", { 
       cls: `internal-link ${RV.A}`,
       attr: {
@@ -46,11 +45,9 @@ export class NodeRenderer {
 
     node.friendGate.direction = node.assignedArea === "left" ? "right" : "left";
     
-    const boundsEl: HTMLElement = targetContainer.closest(`.${RV.COLLECTION_WRAPPER}`) ?? targetContainer;
-
-    node.upperGate.areaElement = boundsEl;
-    node.lowerGate.areaElement = boundsEl;
-    node.friendGate.areaElement = boundsEl;
+    node.upperGate.areaElement = areaContainer;
+    node.lowerGate.areaElement = areaContainer;
+    node.friendGate.areaElement = areaContainer;
 
     const topSVG: SVGSVGElement = node.upperGate.render();
     const bottomSVG: SVGSVGElement = node.lowerGate.render();

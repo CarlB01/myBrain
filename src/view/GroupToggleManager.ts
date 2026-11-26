@@ -5,7 +5,6 @@ export class GroupToggleManager {
   private containerEl: HTMLElement;
   private boundClickHandler: ((event: MouseEvent) => void) | null = null;
   private onRequestRedraw: () => void;
-  // Kobler hver +/- knapp direkte til sin gruppe av Node-objekter
   private groupNotesByBtn = new WeakMap<HTMLElement, Node[]>();
 
   constructor(containerEl: HTMLElement, onRequestRedraw: () => void) {
@@ -13,23 +12,21 @@ export class GroupToggleManager {
     this.onRequestRedraw = onRequestRedraw;
   }
 
-  public setup(): { handler: (e: MouseEvent) => void; bound: boolean } {
+  public setup(): void {
     this.teardown();
 
     this.boundClickHandler = (event: MouseEvent) => {
-      const rawTarget = event.target as HTMLElement | null;
+      const rawTarget = event.target instanceof HTMLElement ? event.target : null;
       if (!rawTarget) return;
 
-      const btn = rawTarget.closest(`.${RV.PLUS_MINUS_BTN}`) as HTMLElement;
-      if (!btn) return;
-      if (!this.containerEl.contains(btn)) return;
+      const btn = rawTarget.closest<HTMLElement>(`.${RV.PLUS_MINUS_BTN}`);
+      if (!btn || !this.containerEl.contains(btn)) return;
 
       event.preventDefault();
       this.onPlusMinusBtnClicked(btn);
     };
 
     this.containerEl.addEventListener("click", this.boundClickHandler, true);
-    return { handler: this.boundClickHandler, bound: true };
   }
 
   public teardown(): void {
@@ -57,26 +54,31 @@ export class GroupToggleManager {
 
   private onPlusMinusBtnClicked(target: HTMLElement): void {
     const notes = this.groupNotesByBtn.get(target);
+    if (!notes) return;
+
     const items = notes
-      ? notes.map(n => n.div).filter((div): div is HTMLElement => Boolean(div))
-      : Array.from(target.closest(`.${RV.GROUPS}`)?.querySelectorAll<HTMLElement>('.item') ?? []);
+      .map((n) => n.div)
+      .filter((div): div is HTMLElement => div !== null);
 
     if (items.length <= 1) return;
 
-    const textContent = target.textContent || "";
+    const isExpanding = (target.textContent ?? "").includes(RV.PLUS);
     const count = items.length.toString();
-    const rawTag = target.getAttribute("data-tag") || "";
-    const cleanTagName = rawTag.replace(/^#/, "");
-      
-    if (textContent.includes(RV.PLUS)) {
-      items.forEach(item => item.addClass('is-group-expanded'));
-      items.slice(1).forEach(item => item.removeClass('hidden'));
-      target.textContent = `${RV.MINUS}${cleanTagName}(${count})`;
-    } else {
-      items.forEach(item => item.removeClass('is-group-expanded'));
-      items.slice(1).forEach(item => item.addClass('hidden'));      
-      target.textContent = `${RV.PLUS}${cleanTagName}(${count})`;
+    const cleanTagName = (target.getAttribute("data-tag") ?? "").replace(/^#/, "");
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item) continue;
+
+      item.toggleClass("is-group-expanded", isExpanding);
+      if (i > 0) {
+        item.toggleClass("hidden", !isExpanding);
+      }
     }
+
+    target.textContent = isExpanding
+      ? `${RV.MINUS}${cleanTagName}(${count})`
+      : `${RV.PLUS}${cleanTagName}(${count})`;
 
     this.onRequestRedraw();
   }
