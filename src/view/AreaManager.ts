@@ -11,12 +11,17 @@ import { PopupManager } from "./PopupManager.js";
 import { HoverHighlightManager } from "./HoverHighlightManager.js";
 import { NetworkGraph } from "../data/NetworkGraph.js";
 import { Gate } from "../data/Gate.js";
-import { SclBridge } from "../scl-bridge.js";
+
+type QuadrantName = "center" | "upper" | "left" | "lower" | "right";
 
 export class AreaManager {
   containerEl: HTMLElement;
   backContainerSVG!: SVGSVGElement;
-  center!: HTMLElement; left!: HTMLElement; right!: HTMLElement; upper!: HTMLElement; lower!: HTMLElement;
+  center!: HTMLElement;
+  left!: HTMLElement;
+  right!: HTMLElement;
+  upper!: HTMLElement;
+  lower!: HTMLElement;
 
   private graph: NetworkGraph;
   private plugin: MyBrainPlugin;
@@ -41,8 +46,10 @@ export class AreaManager {
     this.plugin = plugin;
 
     this.toggleManager = new GroupToggleManager(this.containerEl, () => {
-      this.reflowHorizontalArea(this.lower, true);
-      this.reflowHorizontalArea(this.right, false);
+      this.reflowArea(this.upper, "upper");
+      this.reflowArea(this.left, "left");
+      this.reflowArea(this.lower, "lower");
+      this.reflowArea(this.right, "right");
       this.requestRedraw();
     });
 
@@ -60,20 +67,17 @@ export class AreaManager {
     this.hoverManager.setup();
 
     this.resizeObserver?.disconnect();
-    this.resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        // Ignorer 0x0 når vinduet er skjult/i dvale på macOS
-        if (entry.contentRect.width === 0 || entry.contentRect.height === 0) return;
-      }
-      if (this.graph?.centerNote) {
-        // Hvis grafen ble tømt eller mangler innhold etter dvale, bygg på nytt; ellers bare oppdater linjer
-        if (!this.center?.isConnected) {
-          this.renderGraph();
-        } else {
-          this.requestRedraw();
-        }
+    this.resizeObserver = new ResizeObserver(([entry]) => {
+      if (!entry || entry.contentRect.width === 0 || entry.contentRect.height === 0) return;
+      if (!this.graph?.centerNote) return;
+
+      if (!this.center?.isConnected) {
+        this.renderGraph();
+      } else {
+        this.requestRedraw();
       }
     });
+
     this.resizeObserver.observe(this.containerEl);
 
     // Fanger scroll i alle kvadranter (capture: true fordi scroll-events ikke bobler)
@@ -115,7 +119,6 @@ export class AreaManager {
 
   public renderGraph(): void {
     if (this.plugin.isAppPaused()) return;
-    // Ikke start ny DOM-bygging hvis vinduet er skjult/occluded på macOS
     if (this.containerEl.isConnected && (this.containerEl.clientWidth === 0 || this.containerEl.clientHeight === 0)) {
       return;
     }
@@ -130,14 +133,17 @@ export class AreaManager {
     }
     this.redrawQueued = false;
   }
+
+  public clearTransientHoverState(): void {
+    this.hoverManager.clearHoverHighlight();
+  }
   // #endregion
 
-  // #region GRAPH METHODS
+  // #region GRAPH RENDER & LAYOUT ENGINE
   private executeRenderGraph(): void {  
     const centerNote = this.graph.centerNote;
     if (!centerNote || !this.containerEl?.isConnected) return;
 
-    // Dobbeltsjekk dimensjoner før vi tømmer DOM-en (hindrer blank skjerm etter Mac-dvale)
     if (this.containerEl.clientWidth === 0 || this.containerEl.clientHeight === 0) return;
 
     this.containerEl.empty();
@@ -152,173 +158,172 @@ export class AreaManager {
     this.lower = fragment.createDiv({ cls: RV.AREA_BOTTOM });
     this.backContainerSVG = fragment.createSvg("svg", { cls: RV.SVG_LAYER });
 
-    // 0. Render Center Quad
+    // 0. Center
     this.renderQuadrant(this.center, [[centerNote]], "center");
     this.popupManager.renderInfoBtnForCenterNode(this.graph);
-
     if (centerNote.div) this.nodeElByPath.set(centerNote.path, centerNote.div);
 
-    // 1. Render Upper Quad
-    const cleanParentsOnly = Array.from(centerNote.relations.parents).filter(n => n.relation === "parent");
-    this.renderQuadrant(this.upper, [this.graph.getSortedNotesForQuadrant(cleanParentsOnly, false)], "upper");
+    // 1. Upper (Parents)
+    const cleanParents = Array.from(centerNote.relations.parents).filter(n => n.relation === "parent");
+    this.renderQuadrant(this.upper, [this.graph.getSortedNotesForQuadrant(cleanParents, false)], "upper");
 
-    // 2. Render Left Quad
-    const cleanFriendsOnly = Array.from(centerNote.relations.friends).filter(n => n.relation === "friend");
-    this.containerEl.toggleClass("rv-no-left", cleanFriendsOnly.length === 0);
-    this.renderQuadrant(this.left, [this.graph.getSortedNotesForQuadrant(cleanFriendsOnly, false)], "left");
+    // 2. Left (Friends)
+    const cleanFriends = Array.from(centerNote.relations.friends).filter(n => n.relation === "friend");
+    this.containerEl.toggleClass("rv-no-left", cleanFriends.length === 0);
+    this.renderQuadrant(this.left, [this.graph.getSortedNotesForQuadrant(cleanFriends, false)], "left");
 
-    // 3. Render Lower Quad
-    const allNotesInCache = Array.from(this.graph.noteCache.values()).filter(n => n.isUsed);
-    const childrenOnly = this.graph.getSortedNotesForQuadrant(allNotesInCache.filter(n => n.relation === "child"), false);
-    const totalUndefinedBucket = this.graph.getSortedNotesForQuadrant(allNotesInCache.filter(n => n.relation === "undefined"), false);
-    this.renderQuadrant(this.lower, [childrenOnly, totalUndefinedBucket].filter(c => c.length > 0), "lower");
+    // 3. Lower (Children + Loose children)
+    const allUsedNotes = Array.from(this.graph.noteCache.values()).filter(n => n.isUsed);
+    const children = this.graph.getSortedNotesForQuadrant(allUsedNotes.filter(n => n.relation === "child"), false);
+    const looseChildren = this.graph.getSortedNotesForQuadrant(allUsedNotes.filter(n => n.relation === "undefined"), false);
+    this.renderQuadrant(this.lower, [children, looseChildren].filter(c => c.length > 0), "lower");
 
-    // 4. Render Right Quad
-    const siblings = this.graph.getSortedNotesForQuadrant(allNotesInCache.filter(n => n.relation === "sibling"), true);
-    const undefinedSiblings = this.graph.getSortedNotesForQuadrant(allNotesInCache.filter(n => n.relation === "undefined-sibling"), true);
-    this.renderQuadrant(this.right, [siblings, undefinedSiblings].filter(c => c.length > 0), "right");
+    // 4. Right (Siblings + Loose siblings)
+    const siblings = this.graph.getSortedNotesForQuadrant(allUsedNotes.filter(n => n.relation === "sibling"), true);
+    const looseSiblings = this.graph.getSortedNotesForQuadrant(allUsedNotes.filter(n => n.relation === "undefined-sibling"), true);
+    this.renderQuadrant(this.right, [siblings, looseSiblings].filter(c => c.length > 0), "right");
 
     this.containerEl.appendChild(fragment);
-    
     this.drawAllGraphLines(); 
   }
 
-  private renderQuadrant(area: HTMLElement, collections: Node[][], areaName: string) {
+  private renderQuadrant(area: HTMLElement, collections: Node[][], areaName: QuadrantName) {
     area.empty(); 
-    const noteCount = collections.flat().length;
-    if (noteCount === 0) return;
+    const totalNoteCount = collections.reduce((sum, col) => sum + col.length, 0);
+    if (totalNoteCount === 0) return;
 
     const areaFragment = createFragment();
-    const collectionWrapper = areaFragment.createDiv(RV.COLLECTION_WRAPPER);
+    const collectionWrapper = areaFragment.createDiv({ cls: RV.COLLECTION_WRAPPER });
+    const columnHost = this.resolveColumnHost(collectionWrapper, areaName);
+
+    const items = this.buildAreaItems(area, collections, totalNoteCount);
+    this.distributeItemsIntoColumns(columnHost, items, areaName);
+
+    area.appendChild(areaFragment);
+  }
+
+  private resolveColumnHost(collectionWrapper: HTMLElement, areaName: QuadrantName): HTMLElement {
+    if (areaName === "lower" || areaName === "right") {
+      return collectionWrapper;
+    }
+    const collectionDiv = collectionWrapper.createDiv({ cls: RV.COLLECTION });
+    return collectionDiv.createDiv({ cls: RV.COL_WRAPPER });
+  }
+
+  private buildAreaItems(area: HTMLElement, collections: Node[][], totalNoteCount: number): HTMLElement[] {
+    const items: HTMLElement[] = [];
+    const isCenter = area === this.center;
 
     collections.forEach((collection, collectionIdx) => {
       if (collection.length === 0) return;
-      const areaCollectionDiv = collectionWrapper.createDiv({ cls: RV.COLLECTION });
-      const colWrapDiv = areaCollectionDiv.createDiv({ cls: RV.COL_WRAPPER });
-          
-      const tagGroupedNotes = this.graph.groupByFirstTag(collection);
-      this.renderGroupCollection(colWrapDiv, tagGroupedNotes, noteCount);
 
-      if (collectionIdx > 0) {
-        const firstItemInCollection = colWrapDiv.querySelector<HTMLElement>('.item');
-        if (firstItemInCollection) firstItemInCollection.addClass('rv-collection-start');
-      }
+      const groupedData = this.graph.groupByFirstTag(collection);
+      let isFirstInCollection = true;
 
-      if (areaName === "upper" || areaName === "left") {
-        const colCount = collection.length > 6 ? 2 : 1;
-        this.distributeItemsIntoFlexColumns(colWrapDiv, colCount);
+      for (const group of groupedData) {
+        const isCollapsible = group.notes.length > 4 && totalNoteCount > 20;
+
+        group.notes.forEach((node, index) => {
+          const noteEl = NodeRenderer.renderNodeElement(node, area, isCenter, this.plugin.sclBridge);
+
+          if (collectionIdx > 0 && isFirstInCollection) {
+            noteEl.addClass("rv-collection-start");
+            isFirstInCollection = false;
+          }
+
+          if (isCollapsible && index > 0 && this.plugin.settings.groupsCollapsed) {
+            noteEl.classList.add("hidden");
+          }
+
+          if (node.div) {
+            this.nodeElByPath.set(node.path, node.div);
+          }
+
+          items.push(noteEl);
+        });
+
+        if (isCollapsible) {
+          const firstDiv = group.notes[0]?.div;
+          if (firstDiv) {
+            firstDiv.classList.add("rv-first-in-group");
+            firstDiv.prepend(this.toggleManager.buildPlusMinusBtn(firstDiv, group, true));
+          }
+        }
       }
     });
-    
-    area.appendChild(areaFragment);
 
-    if (areaName === "lower") this.reflowHorizontalArea(this.lower, true);
-    if (areaName === "right") this.reflowHorizontalArea(this.right, false);
+    return items;
   }
-
-  private distributeItemsIntoFlexColumns(colWrapDiv: HTMLElement, colCount: number): void {
-    const items = Array.from(colWrapDiv.querySelectorAll<HTMLElement>('.item'));
-    if (items.length === 0 || colCount < 1) return;
-
-    const cols: HTMLElement[] = [];
-    for (let i = 0; i < colCount; i++) {
-      cols.push(colWrapDiv.createDiv({ cls: 'rv-flex-col' }));
-    }
-
-    const firstCol = cols[0];
-    const lastCol = cols[cols.length - 1];
-    if (!firstCol || !lastCol) return;
-
-    const visibleItems = items.filter((el: HTMLElement) => !el.classList.contains('hidden'));
-    const hiddenItems = items.filter((el: HTMLElement) => el.classList.contains('hidden'));
-    const perCol = Math.max(1, Math.ceil(visibleItems.length / colCount));
-
-    visibleItems.forEach((item: HTMLElement, idx: number) => {
-      const colIndex = Math.min(Math.floor(idx / perCol), colCount - 1);
-      const targetCol = cols[colIndex] ?? firstCol;
-      targetCol.appendChild(item);
-    });
-
-    hiddenItems.forEach((item: HTMLElement) => {
-      const prevParent = item.previousElementSibling?.parentElement;
-      if (prevParent && prevParent.classList.contains('rv-flex-col')) {
-        prevParent.appendChild(item);
-      } else {
-        lastCol.appendChild(item);
-      }
-    });
-  }
-
-  public reflowHorizontalArea(areaEl: HTMLElement | undefined, isLower: boolean): void {
-    const collectionWrapper = areaEl?.querySelector<HTMLElement>(`.${RV.COLLECTION_WRAPPER}`);
+  
+  public reflowArea(areaEl: HTMLElement, areaName: QuadrantName): void {
+    const collectionWrapper = areaEl.querySelector<HTMLElement>(`.${RV.COLLECTION_WRAPPER}`);
     if (!collectionWrapper) return;
 
-    const allItems = Array.from(collectionWrapper.querySelectorAll<HTMLElement>('.item'));
-    if (allItems.length === 0) return;
+    const columnHost = areaName === "lower" || areaName === "right"
+      ? collectionWrapper
+      : collectionWrapper.querySelector<HTMLElement>(`.${RV.COL_WRAPPER}`) ?? collectionWrapper;
 
-    const visibleCount = allItems.filter(el => !el.classList.contains('hidden')).length;
-    const colCount = isLower
-      ? this.getLowerColumnCount(visibleCount)
-      : Math.max(1, Math.ceil(visibleCount / 5));
+    const items = Array.from(columnHost.querySelectorAll<HTMLElement>(".item"));
+    if (items.length === 0) return;
 
-    if (isLower) {
-      collectionWrapper.toggleClass('is-scrolling', visibleCount > 24);
+    this.distributeItemsIntoColumns(columnHost, items, areaName);
+  }
+
+  private distributeItemsIntoColumns(columnHost: HTMLElement, items: HTMLElement[], areaName: QuadrantName): void {
+    const visibleCount = items.reduce((count, el) => count + (el.classList.contains("hidden") ? 0 : 1), 0);
+    const colCount = this.getColumnCount(areaName, visibleCount);
+
+    if (areaName === "lower") {
+      columnHost.toggleClass("is-scrolling", visibleCount > 24);
     }
 
-    const newCols: HTMLElement[] = [];
+    const columns: HTMLElement[] = [];
     for (let i = 0; i < colCount; i++) {
-      const col = createDiv({ cls: 'rv-flex-col' });
-      newCols.push(col);
+      columns.push(createDiv({ cls: "rv-flex-col" }));
     }
 
-    const firstCol = newCols[0]!;
+    const firstCol = columns[0];
+    if (!firstCol) return;
+
     const perCol = Math.max(1, Math.ceil(visibleCount / colCount));
     let visibleIdx = 0;
     let currentCol: HTMLElement = firstCol;
 
-    for (const item of allItems) {
-      if (!item.classList.contains('hidden')) {
+    for (const item of items) {
+      if (!item.classList.contains("hidden")) {
         const colIndex = Math.min(Math.floor(visibleIdx / perCol), colCount - 1);
-        currentCol = newCols[colIndex] ?? firstCol;
+        currentCol = columns[colIndex] ?? firstCol;
         visibleIdx++;
       }
       currentCol.appendChild(item);
     }
 
-    collectionWrapper.querySelectorAll('.rv-flex-col').forEach(col => col.remove());
-    newCols.forEach(col => collectionWrapper.appendChild(col));
+    columnHost.querySelectorAll(".rv-flex-col").forEach(col => col.remove());
+    for (const col of columns) {
+      columnHost.appendChild(col);
+    }
   }
 
-  private getLowerColumnCount(count: number): number {
-    if (count <= 1) return 1;
-    if (count <= 6) return 2;
-    if (count <= 12) return 3;
-    if (count <= 24) return 4;
-    return Math.ceil(count / 6);
+  private getColumnCount(areaName: QuadrantName, visibleCount: number): number {
+    switch (areaName) {
+      case "center":
+        return 1;
+      case "upper":
+      case "left":
+        return visibleCount > 6 ? 2 : 1;
+      case "lower":
+        if (visibleCount <= 1) return 1;
+        if (visibleCount <= 6) return 2;
+        if (visibleCount <= 12) return 3;
+        if (visibleCount <= 24) return 4;
+        return Math.ceil(visibleCount / 6);
+      case "right":
+        return Math.max(1, Math.ceil(visibleCount / 5));
+    }
   }
+  // #endregion
 
-  private renderGroupCollection(targetContainer: HTMLElement, groupedData: { tag: string; notes: Node[] }[], totalNoteCount: number) {
-    groupedData.forEach(group => {
-      const groupDiv = targetContainer.createDiv({ cls: RV.GROUPS });
-      const overGrensen = group.notes.length > 4 && totalNoteCount > 20;
-
-      group.notes.forEach((node, index) => {
-        const noteEl = NodeRenderer.renderNodeElement(node, targetContainer, this.center === targetContainer, this.plugin.sclBridge);
-        if (overGrensen && index > 0 && this.plugin.settings.groupsCollapsed) noteEl.classList.add('hidden');
-        groupDiv.appendChild(noteEl);
-        if (node.div) this.nodeElByPath.set(node.path, node.div);
-      });
-
-      if (overGrensen) {
-        const firstDiv = group.notes[0]?.div;
-        if (firstDiv) {
-          firstDiv.classList.add('rv-first-in-group');
-          firstDiv.prepend(this.toggleManager.buildPlusMinusBtn(firstDiv, group, true));
-        }
-      }
-    });
-  }
-
+  // #region GRAPH LINES
   private drawAllGraphLines() {
     const centerNote = this.graph.centerNote;
     if (!centerNote) return;
@@ -423,10 +428,6 @@ export class AreaManager {
     }
     if (circle.style.fill !== color) circle.style.fill = color;
     if (circle.style.stroke !== color) circle.style.stroke = color;
-  }
-
-  public clearTransientHoverState() { 
-    this.hoverManager.clearHoverHighlight(); 
   }
   // #endregion
 }
