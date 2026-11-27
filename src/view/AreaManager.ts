@@ -165,6 +165,7 @@ export class AreaManager {
 
     // 1. Upper (Parents)
     const cleanParents = Array.from(centerNote.relations.parents).filter(n => n.relation === "parent");
+    this.containerEl.toggleClass("rv-no-upper", cleanParents.length === 0);
     this.renderQuadrant(this.upper, [this.graph.getSortedNotesForQuadrant(cleanParents, false)], "upper");
 
     // 2. Left (Friends)
@@ -254,29 +255,128 @@ export class AreaManager {
     areaEl.appendChild(fragment);
   }
 
-  private distributeItemsIntoColumns(
-    targetHost: HTMLElement | DocumentFragment, 
+    private distributeItemsIntoColumns(
+    targetHost: HTMLElement | DocumentFragment,
     areaEl: HTMLElement,
-    items: HTMLElement[], 
+    items: HTMLElement[],
     areaName: QuadrantName
   ): void {
     const visibleCount = items.reduce((count, el) => count + (el.classList.contains("hidden") ? 0 : 1), 0);
-    const colCount = this.getColumnCount(areaName, visibleCount);
+    if (visibleCount === 0) return;
 
-    if (areaName === "upper") {
-      this.containerEl.toggleClass("rv-upper-wide", colCount > 1);
-      areaEl.toggleClass("is-scrolling", visibleCount > 12);
+    // 1. Center, upper og left har enkle, faste regler
+    if (areaName === "center" || areaName === "upper" || areaName === "left") {
+      const colCount = this.getFixedColumnCount(areaName, visibleCount);
+      if (areaName === "upper") {
+        this.containerEl.toggleClass("rv-upper-wide", colCount > 1);
+        areaEl.toggleClass("is-scrolling", visibleCount > 12);
+      }
+      if (areaName === "left") {
+        areaEl.toggleClass("is-tall", visibleCount >= 4);
+      }
+      this.packByCount(targetHost, items, visibleCount, colCount);
+      return;
     }
 
-    if (areaName === "left") {
-      areaEl.toggleClass("is-tall", visibleCount >= 4);
-    }
+    // 2. Lower og Right: Pakk etter tilgjengelig høyde i vinduet!
+    const availableHeight = this.getAvailableAreaHeight(areaName);
+    const columns = this.packByHeight(items, availableHeight, areaName);
 
     if (areaName === "lower") {
-      areaEl.toggleClass("is-single-col", colCount === 1);
-      areaEl.toggleClass("is-scrolling", visibleCount > 24);
+      areaEl.toggleClass("is-single-col", columns.length === 1);
+      areaEl.toggleClass("is-scrolling", columns.length > 4);
     }
 
+    for (const col of columns) {
+      targetHost.appendChild(col);
+    }
+  }
+
+  private getAvailableAreaHeight(areaName: "lower" | "right"): number {
+    const totalH = this.containerEl.clientHeight;
+    const isNoUpper = this.containerEl.classList.contains("rv-no-upper");
+
+    if (areaName === "lower") {
+      // Når upper er tom får lower ~80 % av høyden, ellers ~44 %
+      const ratio = isNoUpper ? 0.78 : 0.44;
+      return Math.max(80, Math.floor(totalH * ratio) - 16);
+    }
+
+    // Right deler øvre del sammen med upper (~44 % av totalhøyden)
+    return Math.max(80, Math.floor(totalH * 0.44) - 12);
+  }
+
+  private packByHeight(
+    items: HTMLElement[],
+    maxColHeight: number,
+    areaName: "lower" | "right"
+  ): HTMLElement[] {
+    // Mål faktiske høyder raskt i én samlet operasjon (ingen layout thrashing)
+    const visibleItems = items.filter(el => !el.classList.contains("hidden"));
+    const heights = new Map<HTMLElement, number>();
+
+    // Midlertidig måle-container hvis nodene ikke er i DOM ennå
+    const needsMeasure = visibleItems.some(el => el.offsetHeight === 0);
+    let measureHost: HTMLElement | null = null;
+    if (needsMeasure) {
+      measureHost = this.containerEl.createDiv({
+        cls: RV.COLUMNS,
+        attr: { style: "position:absolute; visibility:hidden; pointer-events:none; width:9em;" },
+      });
+      for (const el of visibleItems) measureHost.appendChild(el);
+    }
+
+    for (const el of visibleItems) {
+      heights.set(el, el.offsetHeight || 26);
+    }
+
+    measureHost?.remove();
+
+    // Hvis alt får plass i 1–4 balanserte kolonner i lower, fordel jevnt i stedet for å tømme alt i kolonne 1
+    const totalHeight = visibleItems.reduce((sum, el) => sum + (heights.get(el) ?? 26), 0);
+    const minColsNeeded = Math.max(1, Math.ceil(totalHeight / maxColHeight));
+    const targetCols = areaName === "lower" && visibleItems.length > 1
+      ? Math.max(minColsNeeded, Math.min(4, Math.ceil(visibleItems.length / 4)))
+      : minColsNeeded;
+
+    const targetColHeight = Math.min(maxColHeight, Math.ceil(totalHeight / targetCols) + 12);
+
+    const columns: HTMLElement[] = [createDiv({ cls: RV.COLUMNS })];
+    let currentCol = columns[0]!;
+    let currentHeight = 0;
+
+    for (const item of items) {
+      if (item.classList.contains("hidden")) {
+        // Skjulte gruppe-søsken følger alltid forrige synlige node
+        currentCol.appendChild(item);
+        continue;
+      }
+
+      const itemH = heights.get(item) ?? 26;
+      if (currentHeight > 0 && currentHeight + itemH > targetColHeight) {
+        currentCol = createDiv({ cls: RV.COLUMNS });
+        columns.push(currentCol);
+        currentHeight = 0;
+      }
+
+      currentCol.appendChild(item);
+      currentHeight += itemH;
+    }
+
+    return columns;
+  }
+
+  private getFixedColumnCount(areaName: "center" | "upper" | "left", visibleCount: number): number {
+    if (areaName === "center") return 1;
+    return visibleCount > 6 ? 2 : 1;
+  }
+
+  private packByCount(
+    targetHost: HTMLElement | DocumentFragment,
+    items: HTMLElement[],
+    visibleCount: number,
+    colCount: number
+  ): void {
     const columns: HTMLElement[] = [];
     for (let i = 0; i < colCount; i++) {
       columns.push(createDiv({ cls: RV.COLUMNS }));
@@ -297,28 +397,13 @@ export class AreaManager {
       }
       currentCol.appendChild(item);
     }
+
     for (const col of columns) {
       targetHost.appendChild(col);
     }
   }
 
-  private getColumnCount(areaName: QuadrantName, visibleCount: number): number {
-    switch (areaName) {
-      case "center":
-        return 1;
-      case "upper":
-      case "left":
-        return visibleCount > 6 ? 2 : 1;
-      case "lower":
-        if (visibleCount <= 1) return 1;
-        if (visibleCount <= 6) return 2;
-        if (visibleCount <= 12) return 3;
-        if (visibleCount <= 24) return 4;
-        return Math.ceil(visibleCount / 6);
-      case "right":
-        return Math.max(1, Math.ceil(visibleCount / 5));
-    }
-  }
+
   // #endregion
 
   // #region GRAPH LINES

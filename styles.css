@@ -49,11 +49,11 @@
 }
 
 /* =================================================================== */
-/* GEOMETRIC ENVELOPE (GRID + AREAS + SVG LAYER) */
+/* 2. GEOMETRIC ENVELOPE (GRID + AREAS + SVG LAYER) */
 /* =================================================================== */
 .workspace-leaf .workspace-leaf-content .view-content.rv-container {
   display: grid;
-  grid-template-rows: 0 auto auto auto 0;
+  grid-template-rows: 0 minmax(0, 1fr) auto minmax(0, 1fr) 0;
   grid-template-columns: minmax(5.5em, 1fr) minmax(6em, 1fr) minmax(4em, 2fr);
   align-content: center;
   position: absolute;
@@ -61,7 +61,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  padding: 1em 0 1em 1em;
+  padding: 1.5em 0 0.75em 1em;
   background-color: transparent;
   overflow: hidden;
   box-sizing: border-box;
@@ -71,12 +71,17 @@
     grid-template-columns: 2em minmax(6em, max-content) minmax(4em, 1fr);
   }
 
+  &.rv-no-upper {
+    grid-template-rows: 0 minmax(0, 1fr) auto minmax(0, 2fr) 0;
+  }
+
   .rv-area {
     position: relative;
     z-index: 1;
     box-sizing: border-box;
     min-height: 0;
     min-width: 0;
+    max-height: 100%;
   }
 
   /* UPPER QUADRANT (Row 2 - Låst til samme midtakse som center, vokser symmetrisk utover) */
@@ -88,8 +93,7 @@
     align-self: end;
     width: max-content;
     max-width: 90cqw; /* Hindrer at den går helt ut av skjermen på smale paneler */
-    max-height: 42cqh;
-    margin-bottom: 0.3em;
+    margin-bottom: 1.5em;
     pointer-events: none;
     .rv-columns {
       flex: 1 1 0%;
@@ -131,7 +135,6 @@
     grid-row: 3;
     margin-right: 0.3em;
     align-self: center;
-    max-height: 44cqh;
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
@@ -152,16 +155,14 @@
     justify-self: stretch;
     margin-left: 0em;
     align-self: end;
-    max-height: 46cqh;
   }
 
   /* LOWER QUADRANT (Row 4) */
   .rv-area.lower {
     grid-column: 1 / span 3;
     grid-row: 4;
-    margin: 1em 0 1em 0.35em;
+    margin: 1.5em 0 1em 0.35em;
     align-self: start;
-    max-height: 44cqh;
     /* Litt ekstra vertikal luft når lower kun har 1 item så Bézier-kurven ikke får motbølge */
     &.is-single-col {
       margin-top: 1.6em;
@@ -301,7 +302,7 @@
     flex-direction: row;
     width: 100%;
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: auto;
     touch-action: pan-x;
     -webkit-overflow-scrolling: touch;
 
