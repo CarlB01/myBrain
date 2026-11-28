@@ -17,6 +17,8 @@ export const RV = {
   CONTAINER: 'rv-container',
   MYBRAIN_CONTAINER: 'rv-container',
   SVG_LAYER: 'rv-svg-layer',
+  DRAWER_EXPANDED: 'is-drawer-expanded',
+  DRAWER_UNLOCK: 'rv-drawer-unlock',
   
   // ==========================================================================
   // Network Graph Area Quadrants

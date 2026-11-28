@@ -52,7 +52,7 @@ export class GroupToggleManager {
     return button;
   }
 
-  private onPlusMinusBtnClicked(target: HTMLElement): void {
+  public onPlusMinusBtnClicked(target: HTMLElement): void {
     const notes = this.groupNotesByBtn.get(target);
     if (!notes) return;
 

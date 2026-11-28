@@ -11,6 +11,7 @@ import { PopupManager } from "./PopupManager.js";
 import { HoverHighlightManager } from "./HoverHighlightManager.js";
 import { NetworkGraph } from "../data/NetworkGraph.js";
 import { Gate } from "../data/Gate.js";
+import { DrawerExpandManager } from "./DrawerExpandManager.js"
 
 type QuadrantName = "center" | "upper" | "left" | "lower" | "right";
 
@@ -35,6 +36,7 @@ export class AreaManager {
   private toggleManager: GroupToggleManager;
   private popupManager: PopupManager;
   private hoverManager: HoverHighlightManager;
+  private drawerExpandManager: DrawerExpandManager;
 
   private nodeElByPath = new Map<string, HTMLElement>();
   private readonly cornerEpsilon = 6;
@@ -50,13 +52,31 @@ export class AreaManager {
       this.reflowArea(this.upper, "upper");
       this.reflowArea(this.left, "left");
       this.reflowArea(this.lower, "lower");
+      this.drawerExpandManager.syncAfterReflow();
       this.reflowArea(this.right, "right");
       this.requestRedraw();
     });
 
     this.popupManager = new PopupManager(this.containerEl, this.plugin);
     this.hoverManager = new HoverHighlightManager(this.containerEl, this.linkCache, this.nodeElByPath);
-
+    this.drawerExpandManager = new DrawerExpandManager(
+      this.containerEl,
+      () => this.requestRedraw(),
+      (path: string) => {
+        const link = this.lower?.querySelector<HTMLElement>(`.${RV.A}[data-href="${CSS.escape(path)}"]`);
+        link?.click();
+      },
+      (btn: HTMLElement) => {
+        this.toggleManager.onPlusMinusBtnClicked(btn);
+      },
+      (notePath: string | null) => {
+        if (notePath !== null) {
+          this.hoverManager.applyHoverHighlight(notePath);
+        } else {
+          this.hoverManager.clearHoverHighlight();
+        }
+      }
+    );
     this.debouncedRender = debounce(this.executeRenderGraph.bind(this), 40, true);
   }
 
@@ -66,6 +86,7 @@ export class AreaManager {
     
     this.toggleManager.setup();
     this.hoverManager.setup();
+    this.drawerExpandManager.setup();
 
     this.resizeObserver?.disconnect();
     this.resizeObserver = new ResizeObserver(([entry]) => {
@@ -97,6 +118,7 @@ export class AreaManager {
     this.linkCache.clear();
     this.popupManager.cleanupPopup(); 
     this.toggleManager.teardown();
+    this.drawerExpandManager.teardown();
   }
 
   public requestRedraw() {
@@ -146,6 +168,7 @@ export class AreaManager {
 
     if (this.containerEl.clientWidth === 0 || this.containerEl.clientHeight === 0) return;
 
+    this.drawerExpandManager.collapse()
     this.containerEl.empty();
     this.containerEl.className = `view-content ${RV.CONTAINER}`;
 
@@ -412,11 +435,13 @@ export class AreaManager {
     if (!centerNote) return;
 
     this.nodeElByPath.clear();
-    const offBy = DrawingUtils.getContainerOffset(this.containerEl);
+
+    const portalSvg = this.drawerExpandManager.getPortalSvg();
+    const offBy = portalSvg ? { x: 0, y: 0 } : DrawingUtils.getContainerOffset(this.containerEl);
     if (!offBy) return;
-    
+
     const links = this.linkCache; 
-    const canvas = this.backContainerSVG;
+    const canvas = portalSvg ?? this.backContainerSVG;
     const colorful = this.plugin.settings.colorful === true;
     const colorCache = new Map<Node, string | null>();
 
